@@ -307,7 +307,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
 
 # ─── STREAMLIT UI ────────────────────────────────────────────────────────────
 
-LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "B2B_long.png")
+LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "B2B_long.png")
 
 st.set_page_config(
     page_title="GloBE XML Export | b2b accounting",

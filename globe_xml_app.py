@@ -6,6 +6,7 @@ Run: streamlit run globe_xml_app.py
 """
 
 import io
+import logging
 import re
 import uuid
 import openpyxl
@@ -14,6 +15,11 @@ from datetime import datetime, timezone
 
 import os
 import streamlit as st
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+)
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -307,7 +313,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
 
 # ─── STREAMLIT UI ────────────────────────────────────────────────────────────
 
-LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "B2B_long.png")
+LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "B2B_long.png")
 
 st.set_page_config(
     page_title="GloBE XML Export | b2b accounting",
@@ -415,6 +421,25 @@ with st.expander("Advanced options"):
 # ── Step 3: Export ────────────────────────────────────────────────────────────
 st.header("3. Export")
 
+def validate_inputs(cfg: dict) -> list[str]:
+    errors = []
+    if not re.match(r"^[A-Z]{2}$", cfg["jurisdiction"]):
+        errors.append("Jurisdiction must be exactly 2 uppercase letters (e.g. CH)")
+    if not re.match(r"^[A-Z]{3}$", cfg["currency"]):
+        errors.append("Currency must be exactly 3 uppercase letters (e.g. CHF)")
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", cfg["period_start"]):
+        errors.append("Period start must be YYYY-MM-DD")
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", cfg["period_end"]):
+        errors.append("Period end must be YYYY-MM-DD")
+    if not cfg["company_name"].strip():
+        errors.append("Company name is required")
+    if not cfg["tin_value"].strip():
+        errors.append("TIN is required")
+    if not re.match(r"^[A-Z]{2}$", cfg["tin_issued_by"]):
+        errors.append("TIN issued by must be exactly 2 uppercase letters (e.g. CH)")
+    return errors
+
+
 if st.button("Generate XML", type="primary", disabled=uploaded is None):
     if uploaded is None:
         st.error("Please upload an Excel file first.")
@@ -438,6 +463,12 @@ if st.button("Generate XML", type="primary", disabled=uploaded is None):
                     "period_start":  period_start,
                     "period_end":    period_end,
                 }
+
+                input_errors = validate_inputs(cfg)
+                if input_errors:
+                    for err in input_errors:
+                        st.error(err)
+                    st.stop()
 
                 xml_str = build_xml(data, cfg)
 
@@ -491,8 +522,10 @@ if st.button("Generate XML", type="primary", disabled=uploaded is None):
                     st.code(xml_str, language="xml")
 
             except KeyError as e:
+                logging.exception("Sheet not found during Excel read")
                 st.error(f'Sheet not found: {e}. Make sure the file contains a sheet named "QDMTT 2024".')
             except Exception as e:
+                logging.exception("XML generation failed")
                 st.error(f"Error: {e}")
 
 elif uploaded is None:

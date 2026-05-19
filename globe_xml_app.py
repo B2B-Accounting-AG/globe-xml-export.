@@ -7,13 +7,21 @@ Run: streamlit run globe_xml_app.py
 
 import io
 import logging
+import os
 import re
 import uuid
+import zipfile
 import openpyxl
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
-import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives import padding as sym_padding
+from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
+from cryptography.x509 import load_pem_x509_certificate
+
 import streamlit as st
 
 logging.basicConfig(
@@ -194,6 +202,46 @@ def build_xml(data: dict, cfg: dict) -> str:
     buf = io.BytesIO()
     ET.ElementTree(root).write(buf, xml_declaration=True, encoding="utf-8")
     return buf.getvalue().decode("utf-8")
+
+
+# ─── ENCRYPTION ──────────────────────────────────────────────────────────────
+
+def encrypt_for_estv(xml_str: str, pem_bytes: bytes) -> bytes:
+    """
+    Packages xml_str into the ESTV-required encrypted zip:
+      Payload.xml → Payload.zip (compressed) → AES-256-CBC encrypted → "Payload"
+      AES key + IV (48 bytes) → RSA PKCS#1 v1.5 encrypted → "Key"
+      Final zip contains "Payload" + "Key"
+    """
+    # Step 1: compress XML into Payload.zip
+    inner_buf = io.BytesIO()
+    with zipfile.ZipFile(inner_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("Payload.xml", xml_str.encode("utf-8"))
+    payload_zip = inner_buf.getvalue()
+
+    # Step 2: AES-256 CBC encrypt the zip
+    aes_key = os.urandom(32)
+    iv      = os.urandom(16)
+    padder  = sym_padding.PKCS7(128).padder()
+    padded  = padder.update(payload_zip) + padder.finalize()
+    cipher  = Cipher(algorithms.AES(aes_key), modes.CBC(iv), backend=default_backend())
+    enc     = cipher.encryptor()
+    encrypted_payload = enc.update(padded) + enc.finalize()
+
+    # Step 3: RSA-encrypt the 48-byte key material (key || iv)
+    try:
+        pub_key = load_pem_public_key(pem_bytes, backend=default_backend())
+    except Exception:
+        cert    = load_pem_x509_certificate(pem_bytes, default_backend())
+        pub_key = cert.public_key()
+    encrypted_key = pub_key.encrypt(aes_key + iv, asym_padding.PKCS1v15())
+
+    # Step 4: bundle into final zip
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_STORED) as zf:
+        zf.writestr("Payload", encrypted_payload)
+        zf.writestr("Key",     encrypted_key)
+    return out_buf.getvalue()
 
 
 # ─── VALIDATION ──────────────────────────────────────────────────────────────
@@ -541,6 +589,8 @@ if st.button("Generate XML", type="primary", disabled=uploaded is None):
                     st.stop()
 
                 xml_str = build_xml(data, cfg)
+                st.session_state["xml_str"]      = xml_str
+                st.session_state["xml_filename"] = f"gir_{period_end[:4]}_{jurisdiction}.xml"
 
                 # Summary metrics
                 etr_val = fmt_etr(data["adjusted_cov_tax"], data["net_globe_income"])
@@ -600,6 +650,48 @@ if st.button("Generate XML", type="primary", disabled=uploaded is None):
 
 elif uploaded is None:
     st.info("Upload the Excel file above to enable export.")
+
+# ── Step 4: Encrypt for ESTV ──────────────────────────────────────────────────
+st.divider()
+st.header("4. Encrypt for ESTV")
+st.caption(
+    "Upload the ESTV public key (ESTV-PublicKey.pem) from the myESTV portal. "
+    "The app will produce an encrypted .zip ready to upload directly to the GIR-Applikation."
+)
+
+pem_file = st.file_uploader("ESTV Public Key (.pem)", type=["pem"])
+
+xml_ready = "xml_str" in st.session_state
+
+if st.button(
+    "Encrypt & Download",
+    type="primary",
+    disabled=(not xml_ready or pem_file is None),
+):
+    if not xml_ready:
+        st.error("Generate the XML first (Step 3).")
+    elif pem_file is None:
+        st.error("Upload the ESTV public key (.pem) above.")
+    else:
+        with st.spinner("Encrypting…"):
+            try:
+                pem_bytes    = pem_file.read()
+                zip_bytes    = encrypt_for_estv(st.session_state["xml_str"], pem_bytes)
+                base_name    = st.session_state["xml_filename"].replace(".xml", "")
+                zip_filename = f"{base_name}_encrypted.zip"
+                st.download_button(
+                    label="⬇️  Download encrypted ZIP",
+                    data=zip_bytes,
+                    file_name=zip_filename,
+                    mime="application/zip",
+                )
+                st.success("Ready to upload to myESTV → GIR-Applikation.")
+            except Exception as e:
+                logging.exception("Encryption failed")
+                st.error(f"Encryption failed: {e}")
+
+if not xml_ready:
+    st.info("Generate the XML in Step 3 first, then encrypt here.")
 
 st.divider()
 st.markdown(

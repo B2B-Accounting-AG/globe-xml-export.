@@ -588,15 +588,13 @@ rec_jur_code = _rec_sel[:2]
 with st.expander("Advanced options"):
     reporting_role = st.selectbox(
         "Filing role",
-        ["GIR401", "GIR402", "GIR403", "GIR404", "GIR405"],
+        ["GIR401", "GIR402", "GIR404"],
         format_func=lambda x: {
             "GIR401": "GIR401 — Ultimate Parent Entity (UPE)",
             "GIR402": "GIR402 — Designated Filing Entity (DFE)",
-            "GIR403": "GIR403 — Local Filing Entity",
-            "GIR404": "GIR404 — Constituent Entity",
-            "GIR405": "GIR405 — Other",
+            "GIR404": "GIR404 — Constituent Entity (CE)",
         }[x],
-        help="Role of the filing constituent entity",
+        help="Role as registered in the ESTV ePortal",
     )
     tin_type = st.selectbox(
         "TIN type",

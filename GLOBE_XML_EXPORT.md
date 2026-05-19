@@ -86,7 +86,7 @@ The file must contain a sheet named exactly **`QDMTT 2024`**.
 
 | Field | Default | Options |
 |---|---|---|
-| Filing role | `GIR401 — Ultimate Parent Entity (UPE)` | GIR401–GIR405 |
+| Filing role | `GIR401 — Ultimate Parent Entity (UPE)` | GIR401 = UPE, GIR402 = DFE, GIR404 = CE (matches ESTV ePortal roles) |
 | TIN type | `GIR3001 — Tax Identification Number (TIN)` | GIR3001 = TIN, GIR3002 = Functional equivalent |
 | CFS of UPE | `GIR501 — Consolidated Financial Statement (subparagraph a)` | GIR501–GIR503 |
 
@@ -99,7 +99,7 @@ Click **Generate XML**. The app will:
 5. Offer the XML file for download
 
 ### Step 4 — Encrypt for ESTV
-Upload the **ESTV public key** (`ESTV-PublicKey.pem`) from the myESTV portal, then click **Encrypt & Download**.
+Upload the **ESTV public key** (`estv-publickey.pem`) from the ESTV Encryptor bundle (available on the myESTV portal), then click **Encrypt & Download**.
 
 The app produces an encrypted `.zip` ready to upload directly to the ESTV GIR-Applikation:
 
@@ -108,7 +108,9 @@ The app produces an encrypted `.zip` ready to upload directly to the ESTV GIR-Ap
 | `Payload` | `Payload.xml` compressed (ZIP DEFLATE) then AES-256-CBC encrypted |
 | `Key` | AES key + IV (48 bytes) RSA PKCS#1 v1.5 encrypted with ESTV public key |
 
-> Generate the XML in Step 3 first — the Encrypt button is disabled until XML has been generated in the current session.
+> - Generate the XML in Step 3 first — the Encrypt button is disabled until XML has been generated in the current session.
+> - The ESTV also provides a standalone Encryptor tool (Win/Mac/Linux) as an alternative.
+> - Max upload size on the ePortal: **10 MB**.
 
 ---
 
@@ -302,6 +304,18 @@ GloBE_Message (xmlns="urn:oecd:ties:gir:v1")
 
 ---
 
+## Test Environment
+
+ESTV provides a dedicated test environment at `https://eportal-a.admin.ch/`.
+
+| | |
+|---|---|
+| Test window | 7 April – 3 July 2026 |
+| Invitation code | Not sent by post — email `gir-test@estv.admin.ch` with your ESTV-ID (052.XXXX.XXXX) and registration date |
+| Behaviour | Test submissions are processed normally; you receive a status response |
+
+---
+
 ## Final Submission
 
 Once all 20 structural checks pass:
@@ -313,10 +327,20 @@ Once all 20 structural checks pass:
    > The ESTV XSD had not been publicly released as of January 2025. Once available, drop it into the project folder and run the command above.
 
 2. Use **Step 4 — Encrypt for ESTV** in the web app:
-   - Upload `ESTV-PublicKey.pem` from the myESTV portal
-   - Click **Encrypt & Download** to produce `gir_2024_CH_encrypted.zip`
+   - Upload `estv-publickey.pem` from the ESTV Encryptor bundle
+   - Click **Encrypt & Download** to produce the encrypted ZIP
 
-3. Upload the encrypted ZIP to the **myESTV portal → GIR-Applikation**.
+3. Upload the encrypted ZIP to the **myESTV portal → GIR-Applikation** (max 10 MB).
+
+---
+
+## Contact
+
+Eidgenössische Steuerverwaltung  
+Abteilung Informationsaustausch in Steuersachen — Team AIA  
+Eigerstrasse 65, 3003 Bern  
+Email: `info-gir@estv.admin.ch`  
+Tel: +41 58 466 78 76
 
 ---
 

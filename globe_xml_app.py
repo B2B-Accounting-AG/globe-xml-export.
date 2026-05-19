@@ -13,7 +13,7 @@ import uuid
 import zipfile
 import openpyxl
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives import padding as sym_padding
@@ -65,6 +65,66 @@ ROW_ADJUSTED_FANIL     = 236
 ROW_NET_GLOBE_INCOME   = 264
 ROW_AGGREGATE_CURR_TAX = 295
 ROW_ADJUSTED_COV_TAX   = 314
+
+
+# ─── UI OPTIONS ──────────────────────────────────────────────────────────────
+
+CURRENCIES = [
+    "CHF", "EUR", "USD", "GBP", "JPY", "AUD", "CAD", "SEK", "NOK", "DKK",
+    "SGD", "HKD", "NZD", "CNY", "INR", "BRL", "MXN", "KRW", "ZAR", "RUB",
+    "PLN", "CZK", "HUF", "RON", "BGN", "ISK", "TRY", "SAR", "AED",
+    "ILS", "THB", "IDR", "MYR", "PHP", "CLP", "ARS", "COP", "PEN",
+    "EGP", "NGN", "KES", "MAD",
+]
+
+FAS_OPTIONS = [
+    "Swiss GAAP FER",
+    "IFRS",
+    "US GAAP",
+    "UK GAAP",
+    "HGB",
+    "Local GAAP",
+]
+
+_COUNTRIES = [
+    ("AD", "Andorra"), ("AE", "United Arab Emirates"), ("AL", "Albania"),
+    ("AM", "Armenia"), ("AO", "Angola"), ("AR", "Argentina"), ("AT", "Austria"),
+    ("AU", "Australia"), ("AZ", "Azerbaijan"), ("BA", "Bosnia and Herzegovina"),
+    ("BB", "Barbados"), ("BE", "Belgium"), ("BG", "Bulgaria"), ("BH", "Bahrain"),
+    ("BM", "Bermuda"), ("BR", "Brazil"), ("BS", "Bahamas"), ("BW", "Botswana"),
+    ("BY", "Belarus"), ("BZ", "Belize"), ("CA", "Canada"), ("CH", "Switzerland"),
+    ("CL", "Chile"), ("CN", "China"), ("CO", "Colombia"), ("CR", "Costa Rica"),
+    ("CY", "Cyprus"), ("CZ", "Czech Republic"), ("DE", "Germany"), ("DK", "Denmark"),
+    ("DZ", "Algeria"), ("EE", "Estonia"), ("EG", "Egypt"), ("ES", "Spain"),
+    ("FI", "Finland"), ("FR", "France"), ("GB", "United Kingdom"), ("GE", "Georgia"),
+    ("GH", "Ghana"), ("GI", "Gibraltar"), ("GR", "Greece"), ("GT", "Guatemala"),
+    ("HK", "Hong Kong"), ("HR", "Croatia"), ("HU", "Hungary"), ("ID", "Indonesia"),
+    ("IE", "Ireland"), ("IL", "Israel"), ("IN", "India"), ("IS", "Iceland"),
+    ("IT", "Italy"), ("JE", "Jersey"), ("JM", "Jamaica"), ("JO", "Jordan"),
+    ("JP", "Japan"), ("KE", "Kenya"), ("KG", "Kyrgyzstan"), ("KR", "South Korea"),
+    ("KW", "Kuwait"), ("KZ", "Kazakhstan"), ("LB", "Lebanon"), ("LI", "Liechtenstein"),
+    ("LT", "Lithuania"), ("LU", "Luxembourg"), ("LV", "Latvia"), ("MA", "Morocco"),
+    ("MC", "Monaco"), ("MD", "Moldova"), ("ME", "Montenegro"), ("MK", "North Macedonia"),
+    ("MT", "Malta"), ("MU", "Mauritius"), ("MX", "Mexico"), ("MY", "Malaysia"),
+    ("NA", "Namibia"), ("NG", "Nigeria"), ("NL", "Netherlands"), ("NO", "Norway"),
+    ("NZ", "New Zealand"), ("OM", "Oman"), ("PA", "Panama"), ("PE", "Peru"),
+    ("PH", "Philippines"), ("PK", "Pakistan"), ("PL", "Poland"), ("PT", "Portugal"),
+    ("QA", "Qatar"), ("RO", "Romania"), ("RS", "Serbia"), ("RU", "Russia"),
+    ("SA", "Saudi Arabia"), ("SE", "Sweden"), ("SG", "Singapore"), ("SI", "Slovenia"),
+    ("SK", "Slovakia"), ("SM", "San Marino"), ("TH", "Thailand"), ("TN", "Tunisia"),
+    ("TR", "Turkey"), ("TT", "Trinidad and Tobago"), ("TW", "Taiwan"),
+    ("UA", "Ukraine"), ("UG", "Uganda"), ("US", "United States"), ("UY", "Uruguay"),
+    ("UZ", "Uzbekistan"), ("VN", "Vietnam"), ("ZA", "South Africa"),
+    ("ZM", "Zambia"), ("ZW", "Zimbabwe"),
+]
+COUNTRY_DISPLAY = [f"{code} – {name}" for code, name in _COUNTRIES]
+
+
+def _country_idx(code: str) -> int:
+    for i, (c, _) in enumerate(_COUNTRIES):
+        if c == code:
+            return i
+    return 0
 
 
 # ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -499,22 +559,31 @@ st.header("2. Company details")
 
 col1, col2 = st.columns(2)
 with col1:
-    company_name  = st.text_input("Company name", value="PLACEHOLDER_COMPANY_AG")
-    tin_value     = st.text_input("TIN", value="CHE-123456789")
-    tin_issued_by = st.text_input("TIN issued by (ISO 3166-1 Alpha-2)", value="CH")
-    jurisdiction  = st.text_input("Jurisdiction (ISO 3166-1 Alpha-2)", value="CH")
+    company_name   = st.text_input("Company name", value="PLACEHOLDER_COMPANY_AG")
+    tin_value      = st.text_input("TIN", value="CHE-123456789")
+    _tin_sel       = st.selectbox("TIN issued by (ISO 3166-1 Alpha-2)", COUNTRY_DISPLAY,
+                                  index=_country_idx("CH"))
+    tin_issued_by  = _tin_sel[:2]
+    _jur_sel       = st.selectbox("Jurisdiction (ISO 3166-1 Alpha-2)", COUNTRY_DISPLAY,
+                                  index=_country_idx("CH"))
+    jurisdiction   = _jur_sel[:2]
 
 with col2:
-    currency     = st.text_input("Currency (ISO 4217)", value="CHF")
-    fas          = st.text_input("Financial Accounting Standard", value="Swiss GAAP FER")
-    period_start = st.text_input("Period start", value="2024-01-01")
-    period_end   = st.text_input("Period end",   value="2024-12-31")
+    currency         = st.selectbox("Currency (ISO 4217)", CURRENCIES,
+                                    index=CURRENCIES.index("CHF"))
+    fas              = st.selectbox("Financial Accounting Standard", FAS_OPTIONS)
+    _period_start_dt = st.date_input("Period start", value=date(2024, 1, 1))
+    _period_end_dt   = st.date_input("Period end",   value=date(2024, 12, 31))
+    period_start     = _period_start_dt.strftime("%Y-%m-%d")
+    period_end       = _period_end_dt.strftime("%Y-%m-%d")
 
-rec_jur_code = st.text_input(
+_rec_sel     = st.selectbox(
     "Partner country (RecJurCode)",
-    value="DE",
+    COUNTRY_DISPLAY,
+    index=_country_idx("DE"),
     help="ISO 3166-1 Alpha-2 country code of the partner jurisdiction (must not be CH)",
 )
+rec_jur_code = _rec_sel[:2]
 
 with st.expander("Advanced options"):
     reporting_role = st.selectbox(
@@ -529,10 +598,25 @@ with st.expander("Advanced options"):
         }[x],
         help="Role of the filing constituent entity",
     )
-    tin_type   = st.selectbox("TIN type", ["GIR3001", "GIR3002"],
-                              help="GIR3001 = TIN, GIR3002 = Functional equivalent")
-    cfs_of_upe = st.selectbox("CFS of UPE", ["GIR501", "GIR502", "GIR503"],
-                              help="GIR501 = subparagraph a")
+    tin_type = st.selectbox(
+        "TIN type",
+        ["GIR3001", "GIR3002"],
+        format_func=lambda x: {
+            "GIR3001": "GIR3001 — Tax Identification Number (TIN)",
+            "GIR3002": "GIR3002 — Functional equivalent",
+        }[x],
+        help="Type of identifier used as TIN",
+    )
+    cfs_of_upe = st.selectbox(
+        "CFS of UPE",
+        ["GIR501", "GIR502", "GIR503"],
+        format_func=lambda x: {
+            "GIR501": "GIR501 — Consolidated Financial Statement (subparagraph a)",
+            "GIR502": "GIR502 — Combined Financial Statement (subparagraph b)",
+            "GIR503": "GIR503 — Other",
+        }[x],
+        help="Type of Consolidated Financial Statement of the Ultimate Parent Entity",
+    )
 
 # ── Step 3: Export ────────────────────────────────────────────────────────────
 st.header("3. Export")

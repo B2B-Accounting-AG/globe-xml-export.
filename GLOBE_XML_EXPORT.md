@@ -55,10 +55,14 @@ No installation required. Import `ExportGlobEXML.bas` into the `.xlsm` file once
 ## Using the Web App
 
 ### Start
+
+The app is deployed on **Streamlit Community Cloud** (`b2b-accounting-ag` workspace, repo `globe-xml-export`, branch `main`).
+
+To run locally:
 ```bash
-streamlit run /Volumes/Claude_Vault/ClaudeCode/01-Input/globe_xml_app.py
+streamlit run /Volumes/Claude_Vault/ClaudeCode/03-Clients/MME/globe_xml_app.py
 ```
-Then open **http://localhost:8501** in any browser.
+Then open **http://localhost:8501**.
 
 ### Step 1 — Upload Excel file
 Upload the completed `Calculation File.xlsx` or `.xlsm`.  
@@ -66,33 +70,45 @@ The file must contain a sheet named exactly **`QDMTT 2024`**.
 
 ### Step 2 — Company details
 
-| Field | Example | Notes |
-|---|---|---|
-| Company name | `Muster AG` | Legal entity name |
-| TIN | `CHE-123456789` | Swiss UID number |
-| TIN issued by | `CH` | ISO 3166-1 Alpha-2 |
-| Jurisdiction | `CH` | ISO 3166-1 Alpha-2 |
-| Currency | `CHF` | ISO 4217 |
-| Financial Accounting Standard | `Swiss GAAP FER` | Or `IFRS` |
-| Period start | `2024-01-01` | Format: YYYY-MM-DD |
-| Period end | `2024-12-31` | Format: YYYY-MM-DD |
+| Field | Input type | Example / Default | Notes |
+|---|---|---|---|
+| Company name | Text | `Muster AG` | Legal entity name |
+| TIN | Text | `CHE-123456789` | Swiss UID number |
+| TIN issued by | Dropdown | `CH – Switzerland` | ISO 3166-1 Alpha-2 country list |
+| Jurisdiction | Dropdown | `CH – Switzerland` | ISO 3166-1 Alpha-2 country list |
+| Currency | Dropdown | `CHF` | ISO 4217 list |
+| Financial Accounting Standard | Dropdown | `Swiss GAAP FER` | Swiss GAAP FER, IFRS, US GAAP, UK GAAP, HGB, Local GAAP |
+| Period start | Date picker | `2024-01-01` | Calendar selector |
+| Period end | Date picker | `2024-12-31` | Calendar selector |
+| Partner country (RecJurCode) | Dropdown | `DE – Germany` | Receiving jurisdiction; must differ from Jurisdiction |
 
 **Advanced options** (defaults are correct for Swiss QDMTT):
 
 | Field | Default | Options |
 |---|---|---|
-| TIN type | `GIR3001` | GIR3001 = TIN, GIR3002 = Functional equivalent |
-| GloBE status | `GIR301` | GIR301 = Constituent Entity |
-| Rules | `GIR204` | GIR204 = QDMTT applicable |
-| CFS of UPE | `GIR501` | GIR501 = subparagraph a |
+| Filing role | `GIR401 — Ultimate Parent Entity (UPE)` | GIR401–GIR405 |
+| TIN type | `GIR3001 — Tax Identification Number (TIN)` | GIR3001 = TIN, GIR3002 = Functional equivalent |
+| CFS of UPE | `GIR501 — Consolidated Financial Statement (subparagraph a)` | GIR501–GIR503 |
 
 ### Step 3 — Export
 Click **Generate XML**. The app will:
 1. Read the jurisdictional totals from Column N of the Excel sheet
 2. Build the GIR XML structure
-3. Run 14 structural validation checks
+3. Run 20 structural validation checks
 4. Show key metrics (FANIL, NetGlobeIncome, AdjustedCovTax, ETR)
 5. Offer the XML file for download
+
+### Step 4 — Encrypt for ESTV
+Upload the **ESTV public key** (`ESTV-PublicKey.pem`) from the myESTV portal, then click **Encrypt & Download**.
+
+The app produces an encrypted `.zip` ready to upload directly to the ESTV GIR-Applikation:
+
+| File in ZIP | Contents |
+|---|---|
+| `Payload` | `Payload.xml` compressed (ZIP DEFLATE) then AES-256-CBC encrypted |
+| `Key` | AES key + IV (48 bytes) RSA PKCS#1 v1.5 encrypted with ESTV public key |
+
+> Generate the XML in Step 3 first — the Encrypt button is disabled until XML has been generated in the current session.
 
 ---
 
@@ -219,25 +235,30 @@ The tool reads from sheet **`QDMTT 2024`** only.
 
 ## Structural Validation Checks
 
-The app runs 14 checks automatically after every export:
+The app runs 20 checks automatically after every export:
 
 | # | Check |
 |---|---|
 | 1 | Well-formed XML |
 | 2 | Namespace (`urn:oecd:ties:gir:v1`) |
-| 3 | MessageHeader — all 7 required fields present |
-| 4 | Timestamp format (`YYYY-MM-DDTHH:MM:SS`) |
-| 5 | Period dates format (`YYYY-MM-DD`) |
-| 6 | Company name — not placeholder |
-| 7 | TIN — not placeholder |
-| 8 | TIN attributes (`issuedBy` + `TypeOfTIN`) |
-| 9 | Currency `currCode` attribute |
-| 10 | OverallComputation — all required elements present |
-| 11 | ETRRate format (decimal `0.0000`–`1.0000`) |
-| 12 | TopUpTaxPercentage format |
-| 13 | All 26 NetGlobeIncome adjustments present (GIR2001–GIR2026) |
-| 14 | All 19 AdjustedCoveredTax adjustments present (GIR2701–GIR2720) |
-| 15 | All monetary amounts are integers (no decimals) |
+| 3 | MessageHeader — all required fields present (incl. `SendingEntityIN`) |
+| 4 | MessageRefID format (`CH[year]CH[uuid]`) |
+| 5 | Timestamp format (`YYYY-MM-DDTHH:MM:SS`) |
+| 6 | Period dates format (`YYYY-MM-DD`) |
+| 7 | Company name — not placeholder |
+| 8 | FilingCE Role (GIR401–GIR405) |
+| 9 | TIN — not placeholder |
+| 10 | TIN attributes (`issuedBy` + `TypeOfTIN`) |
+| 11 | FilingInfo DocSpec (`DocTypeIndic` + `DocRefId`) |
+| 12 | JurisdictionSection `RecJurCode` present |
+| 13 | JurisdictionSection DocSpec (`DocTypeIndic` + `DocRefId`) |
+| 14 | Currency `currCode` attribute |
+| 15 | OverallComputation — all required elements present |
+| 16 | ETRRate format (decimal `0.0000`–`1.0000`) |
+| 17 | TopUpTaxPercentage format |
+| 18 | All 26 NetGlobeIncome adjustments present (GIR2001–GIR2026) |
+| 19 | All 19 AdjustedCoveredTax adjustments present (GIR2701–GIR2720) |
+| 20 | All monetary amounts are integers (no decimals) |
 
 ---
 
@@ -252,42 +273,50 @@ GloBE_Message (xmlns="urn:oecd:ties:gir:v1")
 │   ├── MessageRefID
 │   ├── MessageTypeIndic       GIR101
 │   ├── ReportingPeriod
-│   └── Timestamp
+│   ├── Timestamp
+│   └── SendingEntityIN        TIN of filing entity
 └── GloBE_Body
     ├── FilingInfo
-    │   ├── FilingCE / ID      Name, ResCountryCode, TIN, Rules, GlobeStatus
+    │   ├── FilingCE           ResCountryCode, Name, TIN, Role
     │   ├── AccountingInfo     CFSofUPE, FAS, Currency
     │   ├── Period             Start, End
-    │   └── NameMNE
+    │   ├── NameMNE
+    │   └── DocSpec            DocTypeIndic, DocRefId
     └── JurisdictionSection
-        └── GloBE_Tax / ETR / ETR_Status / ETR_Computation / OverallComputation
-            ├── FANIL
-            ├── AdjustedFANIL
-            ├── NetGlobeIncome
-            │   ├── Total
-            │   └── Adjustments × 26   (GIR2001–GIR2026)
-            ├── IncomeTaxExpense
-            ├── ETRRate
-            ├── TopUpTaxPercentage
-            └── AdjustedCoveredTax
-                ├── Total
-                ├── AggregrateCurrentTax
-                └── Adjustments × 19   (GIR2701–GIR2720)
+        ├── RecJurCode         Partner/receiving jurisdiction
+        ├── GloBE_Tax / ETR / ETR_Status / ETR_Computation / OverallComputation
+        │   ├── FANIL
+        │   ├── AdjustedFANIL
+        │   ├── NetGlobeIncome
+        │   │   ├── Total
+        │   │   └── Adjustments × 26   (GIR2001–GIR2026)
+        │   ├── IncomeTaxExpense
+        │   ├── ETRRate
+        │   ├── TopUpTaxPercentage
+        │   └── AdjustedCoveredTax
+        │       ├── Total
+        │       ├── AggregrateCurrentTax
+        │       └── Adjustments × 19   (GIR2701–GIR2720)
+        └── DocSpec            DocTypeIndic, DocRefId
 ```
 
 ---
 
 ## Final Submission
 
-Once all 14 structural checks pass:
+Once all 20 structural checks pass:
 
-1. Validate against the official **ESTV XSD** (published by the Swiss Federal Tax Administration):
+1. Optionally validate against the official **ESTV XSD** (Swiss Federal Tax Administration):
    ```bash
    xmllint --schema estv_gir.xsd output/gir_2024_CH.xml
    ```
-2. Submit via the ESTV portal.
+   > The ESTV XSD had not been publicly released as of January 2025. Once available, drop it into the project folder and run the command above.
 
-> The ESTV XSD had not been publicly released as of January 2025. Once available, drop it into the project folder and run the command above.
+2. Use **Step 4 — Encrypt for ESTV** in the web app:
+   - Upload `ESTV-PublicKey.pem` from the myESTV portal
+   - Click **Encrypt & Download** to produce `gir_2024_CH_encrypted.zip`
+
+3. Upload the encrypted ZIP to the **myESTV portal → GIR-Applikation**.
 
 ---
 

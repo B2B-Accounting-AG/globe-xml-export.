@@ -315,9 +315,18 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
 
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "B2B_long.png")
 
+def _load_logo_bytes():
+    try:
+        with open(LOGO_PATH, "rb") as f:
+            return f.read()
+    except OSError:
+        return None
+
+_LOGO_BYTES = _load_logo_bytes()
+
 st.set_page_config(
     page_title="GloBE XML Export | b2b accounting",
-    page_icon=LOGO_PATH,
+    page_icon="🌐",
     layout="centered",
 )
 
@@ -371,7 +380,8 @@ st.markdown("""
 # Header: logo + title
 col_logo, col_title = st.columns([1, 3])
 with col_logo:
-    st.image(LOGO_PATH, width=160)
+    if _LOGO_BYTES:
+        st.image(_LOGO_BYTES, width=160)
 with col_title:
     st.markdown(
         "<h1 style='margin-top:18px; color:#3D3330; font-size:1.4rem; font-weight:700;'>"

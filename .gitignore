@@ -1,0 +1,13 @@
+# macOS metadata
+._*
+.DS_Store
+
+# Test files
+Test/
+
+# Excel calculation files
+Calculation File*.xlsx
+Calculation File*.xlsm
+
+# Embedded repo
+globe-xml-export/

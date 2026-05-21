@@ -1036,6 +1036,14 @@ xml_ready = "xml_str" in st.session_state
 
 # Determine which PEM to use
 pem_override = None
+
+st.markdown(
+    f"<div style='background:#f5f9fc; border-left:3px solid #e0303c; padding:10px 14px;"
+    f"border-radius:4px; margin-bottom:12px; font-size:0.88rem; color:#313c45;'>"
+    f"🔑 &nbsp;{T['bundled_key_info'][lang]}</div>",
+    unsafe_allow_html=True,
+)
+
 with st.expander(T["override_key"][lang]):
     pem_file = st.file_uploader(T["pem_label"][lang], type=["pem", "cer"])
     if pem_file is not None:
@@ -1043,9 +1051,6 @@ with st.expander(T["override_key"][lang]):
         st.success(T["override_active"][lang])
 
 pem_bytes_to_use = pem_override if pem_override else _BUNDLED_PEM
-
-if pem_bytes_to_use and pem_bytes_to_use == _BUNDLED_PEM:
-    st.caption(T["bundled_key_info"][lang])
 
 if st.button(
     T["encrypt_btn"][lang],

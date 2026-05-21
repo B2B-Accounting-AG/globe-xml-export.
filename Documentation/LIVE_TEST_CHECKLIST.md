@@ -95,5 +95,5 @@ The ESTV CTS validator incorrectly treats `OECD10` as `OECD0` (resend) when chec
 | v1.5.2 | OECD10 FilingInfo + OECD1 sections | Unknown | — | Rejected — 50008 |
 
 - **v1.5.0 (OECD10 everywhere) is the correct approach** — portal properly classifies as "New" with correct Reporting Period
-- The 60013/60014 errors are an ESTV CTS bug — report to `info-gir@estv.admin.ch`
+- The 60013/60014 errors are under investigation — root cause (submission-side vs. ESTV CTS) not yet confirmed
 - Error paths: `GeneralSection/DocSpec/DocTypeIndic`, `JurisdictionSection/DocSpec/DocTypeIndic`, and all three `DocSpec` blocks for 60014

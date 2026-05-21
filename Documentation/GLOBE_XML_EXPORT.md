@@ -365,8 +365,8 @@ ESTV provides a dedicated test environment at `https://eportal-a.admin.ch/`.
 | 50007 | Schema validation failed — root element or namespace not recognised | Fixed in v1.4.1 |
 | 50008 | `DocTypeIndic` outside accepted range — OECD10 on production portal, or OECD1/mixed on CTS | Triggered by v1.5.1 and v1.5.2 (see Known Issues) |
 | 50009 | Production file contains test DocTypeIndic (OECD10–13) or filename starts with "Test" | Avoid by using correct submission mode |
-| 60013 | ESTV CTS maps OECD10 → OECD0; fires on `GeneralSection` and `JurisdictionSection` DocSpec | Open ESTV bug — see Known Issues |
-| 60014 | ESTV CTS maps OECD10 → OECD0; fires on all three DocSpecs (FilingInfo, GeneralSection, JurisdictionSection) | Open ESTV bug — see Known Issues |
+| 60013 | OECD0 used in non-FilingInfo `DocTypeIndic` — CTS validator treats OECD10 as OECD0; fires on `GeneralSection` and `JurisdictionSection` DocSpec | Under investigation — see Known Issues |
+| 60014 | Unknown/invalid DocRefId for resend (OECD0) — fires on all three DocSpecs when OECD10 is treated as OECD0 | Under investigation — see Known Issues |
 | 60022 | `GIR401` FilingCE TIN does not match any TIN in UPE element | Fixed in v1.5.0 (GeneralSection added) |
 | 70060 | `GIR2025` present but `IntShippingIncome` element missing | Fixed in v1.5.0 (zero-value filter) |
 | 98201 | GeneralSection missing or does not contain all RecJurCodes | Fixed in v1.5.0 (GeneralSection added) |
@@ -377,7 +377,7 @@ ESTV provides a dedicated test environment at `https://eportal-a.admin.ch/`.
 
 ### Errors 60013 / 60014 — ESTV CTS validator maps OECD10 to OECD0
 
-**Status:** Open ESTV bug. Next step: email `info-gir@estv.admin.ch` to report.
+**Status:** Under investigation — root cause not yet confirmed (may be on submission side or ESTV CTS validator).
 
 When submitting to the CTS test portal (`eportal-a.admin.ch`) with `OECD10` in all `DocTypeIndic` positions (correct test-mode behaviour per OECD spec), the ESTV business-rule validator fires:
 

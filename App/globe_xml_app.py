@@ -465,80 +465,91 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
 
 # ─── STREAMLIT UI ────────────────────────────────────────────────────────────
 
-LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "B2B_long.png")
+MME_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mme_logo.svg")
 
-def _load_logo_bytes():
+def _load_mme_logo_svg():
     try:
-        with open(LOGO_PATH, "rb") as f:
+        with open(MME_LOGO_PATH, "r") as f:
             return f.read()
     except OSError:
         return None
 
-_LOGO_BYTES = _load_logo_bytes()
+_MME_LOGO_SVG = _load_mme_logo_svg()
 
 st.set_page_config(
-    page_title="GloBE XML Export | b2b accounting",
+    page_title="GloBE XML Export | MME",
     page_icon="🌐",
     layout="centered",
 )
 
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Helvetica+Neue:wght@400;600;700&display=swap');
+
+    html, body, [class*="css"] {
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
     /* Header bar */
     [data-testid="stHeader"] { background-color: #FFFFFF; }
 
     /* Sidebar background */
-    [data-testid="stSidebar"] { background-color: #F7F4F2; }
+    [data-testid="stSidebar"] { background-color: #f5f9fc; }
 
     /* Primary button */
     .stButton > button[kind="primary"] {
-        background-color: #E05A2B !important;
+        background-color: #e0303c !important;
         border: none !important;
         color: white !important;
         font-weight: 600 !important;
-        border-radius: 6px !important;
+        border-radius: 30px !important;
+        padding: 0.4rem 1.5rem !important;
     }
     .stButton > button[kind="primary"]:hover {
-        background-color: #C44E24 !important;
+        background-color: #c0272f !important;
     }
 
     /* Download button */
     .stDownloadButton > button {
-        background-color: #E05A2B !important;
+        background-color: #e0303c !important;
         border: none !important;
         color: white !important;
         font-weight: 600 !important;
-        border-radius: 6px !important;
+        border-radius: 30px !important;
         width: 100%;
     }
     .stDownloadButton > button:hover {
-        background-color: #C44E24 !important;
+        background-color: #c0272f !important;
     }
 
     /* Section headers */
-    h2 { color: #5C4F47 !important; border-bottom: 2px solid #E05A2B; padding-bottom: 4px; }
+    h2 { color: #313c45 !important; border-bottom: 2px solid #e0303c; padding-bottom: 4px; }
 
     /* Metric value color */
-    [data-testid="stMetricValue"] { color: #E05A2B !important; font-weight: 700; }
+    [data-testid="stMetricValue"] { color: #e0303c !important; font-weight: 700; }
 
     /* Divider */
-    hr { border-color: #E8E0DB !important; }
+    hr { border-color: #e2eaf1 !important; }
 
     /* Caption */
-    .stCaption { color: #8C7B74 !important; }
+    .stCaption { color: #6a7681 !important; }
 </style>
 """, unsafe_allow_html=True)
 
 # Header: logo + title
 col_logo, col_title = st.columns([1, 3])
 with col_logo:
-    if _LOGO_BYTES:
-        st.image(_LOGO_BYTES, width=160)
+    if _MME_LOGO_SVG:
+        st.markdown(
+            f"<div style='padding-top:12px; width:120px;'>{_MME_LOGO_SVG}</div>",
+            unsafe_allow_html=True,
+        )
 with col_title:
     st.markdown(
-        "<h1 style='margin-top:18px; color:#3D3330; font-size:1.4rem; font-weight:700;'>"
+        "<h1 style='margin-top:18px; color:#313c45; font-size:1.4rem; font-weight:700;"
+        "font-family:\"Helvetica Neue\",Helvetica,Arial,sans-serif;'>"
         "GloBE Information Return<br>"
-        "<span style='font-size:0.95rem; color:#8C7B74; font-weight:400;'>"
+        "<span style='font-size:0.95rem; color:#6a7681; font-weight:400;'>"
         "Swiss QDMTT 2024 &nbsp;·&nbsp; OECD GIR XML Schema (January 2025)"
         "</span></h1>",
         unsafe_allow_html=True,
@@ -777,6 +788,6 @@ if not xml_ready:
 
 st.divider()
 st.markdown(
-    "<p style='color:#C8B8B0; font-size:0.75rem; margin:0;'>B2B Accounting AG</p>",
+    "<p style='color:#6a7681; font-size:0.75rem; margin:0;'>MME Legal | Tax | Compliance</p>",
     unsafe_allow_html=True,
 )

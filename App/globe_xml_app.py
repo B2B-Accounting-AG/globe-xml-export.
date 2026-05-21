@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -253,6 +253,7 @@ def build_xml(data: dict, cfg: dict) -> str:
     })
 
     hdr = sub(root, "MessageSpec")
+    sub(hdr, "SendingEntityIN",     cfg["tin_value"])
     sub(hdr, "TransmittingCountry", cfg["jurisdiction"])
     sub(hdr, "ReceivingCountry",    cfg["jurisdiction"])
     sub(hdr, "MessageType",         "GIR")
@@ -260,7 +261,6 @@ def build_xml(data: dict, cfg: dict) -> str:
     sub(hdr, "MessageTypeIndic",    "GIR101")
     sub(hdr, "ReportingPeriod",     cfg["period_end"])
     sub(hdr, "Timestamp",           now)
-    sub(hdr, "SendingEntityIN",     cfg["tin_value"])
 
     body = sub(root, "GLOBEBody")
     fi   = sub(body, "FilingInfo")

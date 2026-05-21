@@ -1,6 +1,6 @@
 # GloBE XML Export — Documentation
 
-**B2B Accounting AG**  
+**MME Legal | Tax | Compliance** — in cooperation with Mutara  
 Swiss QDMTT 2024 · OECD GIR XML Schema (January 2025)
 
 ---
@@ -13,34 +13,48 @@ Two delivery formats are available:
 
 | Format | File | Who uses it |
 |---|---|---|
-| Web app (Streamlit) | `globe_xml_app.py` | Mac / any browser |
-| Excel macro (VBA) | `ExportGlobEXML.bas` | Windows employees (no Python needed) |
+| Web app (Streamlit) | `globe_xml_app.py` | Any browser — no installation required |
+| Excel macro (VBA) | `ExportGlobEXML.bas` | Windows users (no Python needed) |
+
+**Web app features:**
+- Bilingual interface (EN / DE toggle)
+- Built-in structural validation (20 checks)
+- Plain language summary of key figures
+- One-click encryption for ESTV — no separate encryptor tool needed
+- Bundled ESTV public key (valid until 2027-02-04)
 
 ---
 
 ## Files
 
 ```
-01-Input/
-├── globe_xml_app.py          # Streamlit web app
+App/
+├── globe_xml_app.py          # Streamlit web app (main entry point)
 ├── convert_to_globe_xml.py   # Command-line Python script
-├── ExportGlobEXML.bas         # VBA macro (import into .xlsm)
-├── Calculation File.xlsx      # Swiss QDMTT Excel template
-├── GLOBE_XML_EXPORT.md        # This document
-├── .streamlit/
-│   └── config.toml            # App theme (B2B brand colours)
+├── ExportGlobEXML.bas        # VBA macro (import into .xlsm)
+├── requirements.txt          # Python dependencies
+├── config.toml               # App theme (MME brand colours)
+├── mme_logo.svg              # MME logo
+├── mutara_logo.png           # Mutara logo
+├── favicon.png               # Browser tab icon (MME three-bar mark)
+├── estv-publickey.pem        # Bundled ESTV public key (DigiCert, valid until 2027-02-04)
 └── output/
-    └── gir_YYYY_CH.xml        # Generated XML files
+    └── gir_YYYY_CH.xml       # Generated XML files
 ```
 
 ---
 
 ## Prerequisites
 
-### Web app
+### Web app (Streamlit Cloud — no installation needed)
+The app runs on Streamlit Community Cloud. Users access it via browser with no local setup required.
+
+### Running locally
 ```bash
-pip3 install streamlit openpyxl
+pip3 install streamlit openpyxl cryptography Pillow
+streamlit run App/globe_xml_app.py
 ```
+Then open **http://localhost:8501**.
 
 ### Command-line script
 ```bash
@@ -56,13 +70,9 @@ No installation required. Import `ExportGlobEXML.bas` into the `.xlsm` file once
 
 ### Start
 
-The app is deployed on **Streamlit Community Cloud** (`b2b-accounting-ag` workspace, repo `globe-xml-export`, branch `main`).
+The app is deployed on **Streamlit Community Cloud** (workspace `b2b-accounting-ag`, repo `globe-xml-export`, branch `main`).
 
-To run locally:
-```bash
-streamlit run /Volumes/Claude_Vault/ClaudeCode/03-Clients/MME/globe_xml_app.py
-```
-Then open **http://localhost:8501**.
+A **language toggle (EN / DE)** is available top-right and persists throughout the session.
 
 ### Step 1 — Upload Excel file
 Upload the completed `Calculation File.xlsx` or `.xlsm`.  
@@ -98,10 +108,18 @@ Click **Generate XML**. The app will:
 4. Show key metrics (FANIL, NetGlobeIncome, AdjustedCovTax, ETR)
 5. Offer the XML file for download
 
-### Step 4 — Encrypt for ESTV
-Upload the **ESTV public key** (`estv-publickey.pem`) from the ESTV Encryptor bundle (available on the myESTV portal), then click **Encrypt & Download**.
+A **Plain Language Summary** expander shows a human-readable breakdown of filing info, GloBE income adjustments (non-zero only), covered tax adjustments, and ETR — in the selected language.
 
-The app produces an encrypted `.zip` ready to upload directly to the ESTV GIR-Applikation:
+### Step 4 — Encrypt for ESTV
+Click **Encrypt & Download**. No key upload required — the ESTV public key is bundled in the app.
+
+| Detail | Value |
+|---|---|
+| Bundled key | `estv-publickey.pem` (DigiCert / encryptor.estv.admin.ch) |
+| Valid until | 2027-02-04 |
+| Override | Expand "Use a different key" to upload a custom `.pem` or `.cer` |
+
+The app produces an encrypted `.zip` ready to upload directly to the ESTV GIR-Applikation — **no separate ESTV Encryptor tool needed**:
 
 | File in ZIP | Contents |
 |---|---|
@@ -109,7 +127,6 @@ The app produces an encrypted `.zip` ready to upload directly to the ESTV GIR-Ap
 | `Key` | AES key + IV (48 bytes) RSA PKCS#1 v1.5 encrypted with ESTV public key |
 
 > - Generate the XML in Step 3 first — the Encrypt button is disabled until XML has been generated in the current session.
-> - The ESTV also provides a standalone Encryptor tool (Win/Mac/Linux) as an alternative.
 > - Max upload size on the ePortal: **10 MB**.
 
 ---
@@ -326,11 +343,13 @@ Once all 20 structural checks pass:
    ```
    > The ESTV XSD had not been publicly released as of January 2025. Once available, drop it into the project folder and run the command above.
 
-2. Use **Step 4 — Encrypt for ESTV** in the web app:
-   - Upload `estv-publickey.pem` from the ESTV Encryptor bundle
-   - Click **Encrypt & Download** to produce the encrypted ZIP
+2. Click **Encrypt & Download** in Step 4 — the encrypted ZIP is produced immediately using the bundled ESTV public key. No separate encryptor tool required.
 
 3. Upload the encrypted ZIP to the **myESTV portal → GIR-Applikation** (max 10 MB).
+
+## Disclaimer
+
+This tool is provided for informational purposes only and does not constitute legal or tax advice. The generated XML output should be reviewed and validated by a qualified tax professional before submission to the ESTV. MME accepts no liability for errors, inaccuracies, or omissions in the output, or for any consequences arising from its use.
 
 ---
 

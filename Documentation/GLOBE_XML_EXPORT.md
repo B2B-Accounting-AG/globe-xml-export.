@@ -259,7 +259,7 @@ The app runs 20 checks automatically after every export:
 | # | Check |
 |---|---|
 | 1 | Well-formed XML |
-| 2 | Root element (`GLOBE_OECD`) + namespace (`urn:oecd:ties:gir:v1`) |
+| 2 | Root element (`GLOBE_OECD`) present with `MessageSpec` child |
 | 3 | MessageSpec — all required fields present (incl. `SendingEntityIN`) |
 | 4 | `MessageRefId` format (`CH[year]CH[uuid]`) |
 | 5 | Timestamp format (`YYYY-MM-DDTHH:MM:SS`) |
@@ -284,26 +284,26 @@ The app runs 20 checks automatically after every export:
 ## Output XML Structure
 
 ```
-GLOBE_OECD (xmlns:globe="urn:oecd:ties:gir:v1" version="1.0")
-├── globe:MessageSpec
-│   ├── globe:TransmittingCountry
-│   ├── globe:ReceivingCountry
-│   ├── globe:MessageType          GIR
-│   ├── globe:MessageRefId
-│   ├── globe:MessageTypeIndic     GIR101
-│   ├── globe:ReportingPeriod
-│   ├── globe:Timestamp
-│   └── globe:SendingEntityIN      TIN of filing entity
-└── globe:GLOBEBody
-    ├── globe:FilingInfo
-    │   ├── globe:FilingCE         ResCountryCode, Name, TIN, Role
-    │   ├── globe:AccountingInfo   CFSofUPE, FAS, Currency
-    │   ├── globe:Period           Start, End
-    │   ├── globe:NameMNE
-    │   └── globe:DocSpec          DocTypeIndic, DocRefId
-    └── globe:JurisdictionSection
-        ├── globe:RecJurCode       Partner/receiving jurisdiction
-        ├── globe:GLoBETax / ETR / ETRStatus / ETRComputation / OverallComputation
+GLOBE_OECD (version="1.0")
+├── MessageSpec
+│   ├── TransmittingCountry
+│   ├── ReceivingCountry
+│   ├── MessageType          GIR
+│   ├── MessageRefId
+│   ├── MessageTypeIndic     GIR101
+│   ├── ReportingPeriod
+│   ├── Timestamp
+│   └── SendingEntityIN      TIN of filing entity
+└── GLOBEBody
+    ├── FilingInfo
+    │   ├── FilingCE         ResCountryCode, Name, TIN, Role
+    │   ├── AccountingInfo   CFSofUPE, FAS, Currency
+    │   ├── Period           Start, End
+    │   ├── NameMNE
+    │   └── DocSpec          DocTypeIndic, DocRefId
+    └── JurisdictionSection
+        ├── RecJurCode       Partner/receiving jurisdiction
+        ├── GLoBETax / ETR / ETRStatus / ETRComputation / OverallComputation
         │   ├── FANIL
         │   ├── AdjustedFANIL
         │   ├── NetGlobeIncome
@@ -316,7 +316,7 @@ GLOBE_OECD (xmlns:globe="urn:oecd:ties:gir:v1" version="1.0")
         │       ├── Total
         │       ├── AggregrateCurrentTax
         │       └── Adjustments × 19   (GIR2701–GIR2720)
-        └── globe:DocSpec          DocTypeIndic, DocRefId
+        └── DocSpec          DocTypeIndic, DocRefId
 ```
 
 ---
@@ -367,5 +367,7 @@ Tel: +41 58 466 78 76
 
 - OECD GloBE Information Return XML Schema User Guide, January 2025  
   DOI: [10.1787/c594935a-en](https://doi.org/10.1787/c594935a-en)
-- XML Namespace: `urn:oecd:ties:gir:v1`
+- Swiss ESTV Technische Wegleitung GIR (Technische-Wegleitung-GIR-de.pdf)  
+  §6.4 examples show all elements without namespace prefix — no `xmlns` declaration used
+- OECD XML Namespace (reference only, not declared in output): `urn:oecd:ties:gir:v1`
 - Swiss QDMTT legal basis: Art. 4 MinBestG (Mindestbesteuerungsgesetz)

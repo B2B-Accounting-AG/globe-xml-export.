@@ -31,12 +31,12 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
 GIR_NS = "urn:oecd:ties:gir:v1"
-ET.register_namespace("", GIR_NS)
+ET.register_namespace("globe", GIR_NS)
 N = f"{{{GIR_NS}}}"
 
 
@@ -242,7 +242,7 @@ def build_xml(data: dict, cfg: dict) -> str:
     year = cfg["period_end"][:4]
     msg_ref = f"{cfg['jurisdiction']}{year}{cfg['jurisdiction']}{str(uuid.uuid4())}"
 
-    root = ET.Element(N + "GLOBE_OECD")
+    root = ET.Element("GLOBE_OECD", {"version": "1.0"})
 
     hdr = sub(root, "MessageSpec")
     sub(hdr, "TransmittingCountry", cfg["jurisdiction"])
@@ -276,7 +276,7 @@ def build_xml(data: dict, cfg: dict) -> str:
 
     fi_doc = sub(fi, "DocSpec")
     sub(fi_doc, "DocTypeIndic", "OECD1")
-    sub(fi_doc, "DocRefID",     f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}")
+    sub(fi_doc, "DocRefId",     f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}")
 
     jur_sec = sub(body, "JurisdictionSection")
     sub(jur_sec, "RecJurCode", cfg["rec_jur_code"])
@@ -311,12 +311,14 @@ def build_xml(data: dict, cfg: dict) -> str:
 
     jur_doc = sub(jur_sec, "DocSpec")
     sub(jur_doc, "DocTypeIndic", "OECD1")
-    sub(jur_doc, "DocRefID",     f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}")
+    sub(jur_doc, "DocRefId",     f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}")
 
     ET.indent(root, space="  ")
-    buf = io.BytesIO()
-    ET.ElementTree(root).write(buf, xml_declaration=True, encoding="utf-8")
-    return buf.getvalue().decode("utf-8")
+    raw = ET.tostring(root, encoding="unicode")
+    ns_decl = f'xmlns:globe="{GIR_NS}"'
+    raw = raw.replace(' ' + ns_decl, '')
+    raw = raw.replace('<GLOBE_OECD', f'<GLOBE_OECD {ns_decl}', 1)
+    return f"<?xml version='1.0' encoding='utf-8'?>\n{raw}"
 
 
 # ─── ENCRYPTION ──────────────────────────────────────────────────────────────
@@ -385,8 +387,9 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     def findall(path):
         return root.findall(path, g)
 
-    # 2. Namespace
-    check("Namespace (urn:oecd:ties:gir:v1)", GIR_NS in root.tag)
+    # 2. Root element and namespace
+    check("Root element (GLOBE_OECD) + namespace",
+          root.tag == "GLOBE_OECD" and root.find(f"{N}MessageSpec") is not None)
 
     # 3. MessageSpec — all required fields (incl. Swiss SendingEntityIN)
     hdr_fields = ["TransmittingCountry", "ReceivingCountry", "MessageType",
@@ -445,7 +448,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     fi_doc_ok = (
         fi_doc is not None and
         fi_doc.find(f"{N}DocTypeIndic") is not None and
-        fi_doc.find(f"{N}DocRefID") is not None
+        fi_doc.find(f"{N}DocRefId") is not None
     )
     check("FilingInfo DocSpec (DocTypeIndic + DocRefId)", fi_doc_ok)
 
@@ -460,7 +463,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     jur_doc_ok = (
         jur_doc is not None and
         jur_doc.find(f"{N}DocTypeIndic") is not None and
-        jur_doc.find(f"{N}DocRefID") is not None
+        jur_doc.find(f"{N}DocRefId") is not None
     )
     check("JurisdictionSection DocSpec (DocTypeIndic + DocRefId)", jur_doc_ok)
 

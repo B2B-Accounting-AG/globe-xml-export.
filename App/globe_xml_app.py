@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.1.8"
+VERSION = "1.1.9"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -242,7 +242,7 @@ def build_xml(data: dict, cfg: dict) -> str:
     year = cfg["period_end"][:4]
     msg_ref = f"{cfg['jurisdiction']}{year}{cfg['jurisdiction']}{str(uuid.uuid4())}"
 
-    root = ET.Element("GLOBE_OECD")
+    root = ET.Element(N + "GLOBE_OECD")
 
     hdr = sub(root, "MessageSpec")
     sub(hdr, "TransmittingCountry", cfg["jurisdiction"])
@@ -386,8 +386,8 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
         return root.findall(_nsp(path))
 
     # 2. Root element
-    check("Root element (GLOBE_OECD)",
-          root.tag == "GLOBE_OECD" and root.find(N + "MessageSpec") is not None)
+    check("Root element (globe:GLOBE_OECD)",
+          root.tag == N + "GLOBE_OECD" and root.find(N + "MessageSpec") is not None)
 
     # 3. MessageSpec — all required fields (incl. Swiss SendingEntityIN)
     hdr_fields = ["TransmittingCountry", "ReceivingCountry", "MessageType",

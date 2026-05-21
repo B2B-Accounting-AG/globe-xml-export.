@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.1.7"
+VERSION = "1.1.8"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 

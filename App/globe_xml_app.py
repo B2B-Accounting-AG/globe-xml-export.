@@ -31,16 +31,15 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.1.6"
+VERSION = "1.1.7"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
-# OECD GIR schema (January 2025): namespace is urn:oecd:ties:globe:v1
-# All elements (including root GLOBE_OECD) use the globe: prefix.
-# Analogous to CRS: crs:CRS_OECD xmlns:crs="urn:oecd:ties:crs:v3"
 GLOBE_NS = "urn:oecd:ties:globe:v1"
+XSI_NS   = "http://www.w3.org/2001/XMLSchema-instance"
 N = "{" + GLOBE_NS + "}"
 ET.register_namespace("globe", GLOBE_NS)
+ET.register_namespace("xsi",   XSI_NS)
 
 
 # ─── MAPPINGS ────────────────────────────────────────────────────────────────
@@ -245,7 +244,10 @@ def build_xml(data: dict, cfg: dict) -> str:
     year = cfg["period_end"][:4]
     msg_ref = f"{cfg['jurisdiction']}{year}{cfg['jurisdiction']}{str(uuid.uuid4())}"
 
-    root = ET.Element(N + "GLOBE_OECD", {"version": "1.0"})
+    root = ET.Element(N + "GLOBE_OECD", {
+        "version": "1.0",
+        "{" + XSI_NS + "}schemaLocation": "urn:oecd:ties:globe:v1 GlobeXML_v1.0.xsd",
+    })
 
     hdr = sub(root, "MessageSpec")
     sub(hdr, "TransmittingCountry", cfg["jurisdiction"])

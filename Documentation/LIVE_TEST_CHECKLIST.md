@@ -71,4 +71,21 @@ Upload the QDMTT calculation file.
 |------|---------|--------|
 | `Accepted` | File accepted | Done |
 | 50007 | Schema validation failed — namespace/root element not recognised | Check app version ≥ 1.4.1 |
-| 50008 | DocTypeIndic mismatch | Verify Submission mode in Advanced Options matches the portal (OECD10 for test, OECD1 for production) |
+| 50008 | DocTypeIndic range mismatch — OECD10 on production, or OECD1/mixed on CTS | Use OECD10 (Test/CTS mode) for eportal-a; OECD1 (Production) for eportal |
+| 60013 | OECD0/OECD10 used in non-FilingInfo DocTypeIndic position | Known ESTV CTS bug — see Known Issues below |
+| 60014 | Unknown DocRefId for resend (OECD0) — ESTV maps OECD10 → OECD0 | Known ESTV CTS bug — see Known Issues below |
+| 60022 | GIR401 FilingCE TIN does not match UPE TIN | Fixed in v1.5.0 |
+| 70060 | GIR2025 present without IntShippingIncome | Fixed in v1.5.0 (zero-value filter) |
+| 98201 | GeneralSection missing or incomplete | Fixed in v1.5.0 |
+
+---
+
+## Known Issues
+
+### 60013 / 60014 on CTS test portal (v1.5.0)
+
+The ESTV CTS validator incorrectly treats `OECD10` as `OECD0` (resend) when checking business rules. This causes false 60013/60014 errors even though the XML is correct per the OECD spec.
+
+- **Only OECD10 everywhere** passes the CTS portal-level check (shows "New" type)
+- Using OECD1 or mixed values → 50008 portal rejection
+- This appears to be an ESTV CTS bug — report to `info-gir@estv.admin.ch`

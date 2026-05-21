@@ -1,7 +1,7 @@
 # GloBE XML Export — Documentation
 
 **MME Legal | Tax | Compliance** — in cooperation with Mutara  
-Swiss QDMTT 2024 · OECD GIR XML Schema (January 2025) · **v1.4.2**
+Swiss QDMTT 2024 · OECD GIR XML Schema (January 2025) · **v1.5.0**
 
 ---
 
@@ -18,11 +18,13 @@ Two delivery formats are available:
 
 **Web app features:**
 - Bilingual interface (EN / DE toggle)
-- Built-in structural validation (20 checks)
+- Built-in structural validation (20+ checks)
 - Plain language summary of key figures
 - One-click encryption for ESTV — no separate encryptor tool needed
 - Bundled ESTV public key (valid until 2027-02-04)
 - Test / Production submission mode toggle (DocTypeIndic OECD10 vs OECD1)
+- GeneralSection with CorporateStructure/UPE block (required by ESTV since v1.5.0)
+- Zero-value adjustment filtering (prevents rule 70060)
 
 ---
 
@@ -278,9 +280,10 @@ The app runs 20 checks automatically after every export:
 | 15 | OverallComputation — all required elements present |
 | 16 | ETRRate format (decimal `0.0000`–`1.0000`) |
 | 17 | TopUpTaxPercentage format |
-| 18 | All 26 NetGlobeIncome adjustments present (GIR2001–GIR2026) |
-| 19 | All 19 AdjustedCoveredTax adjustments present (GIR2701–GIR2720) |
+| 18 | NetGlobeIncome adjustment codes are valid GIR codes (zero-value items filtered) |
+| 19 | AdjustedCoveredTax adjustment codes are valid GIR codes (zero-value items filtered) |
 | 20 | All monetary amounts are integers (no decimals) |
+| 21 | GeneralSection present with CorporateStructure / UPE block |
 
 ---
 
@@ -304,6 +307,13 @@ globe:GLOBE_OECD (xmlns:globe="urn:oecd:ties:globe:v2" version="1.0")
     │   ├── globe:Period           Start, End
     │   ├── globe:NameMNE
     │   └── globe:DocSpec          stf:DocTypeIndic (OECD1 / OECD10), stf:DocRefId
+    ├── globe:GeneralSection                          ← added v1.5.0
+    │   ├── globe:RecJurCode       Same as jurisdiction (CH)
+    │   ├── globe:CorporateStructure
+    │   │   └── globe:UPE
+    │   │       └── globe:OtherUPE
+    │   │           └── globe:ID   Name, ResCountryCode, TIN, Rules, GlobeStatus
+    │   └── globe:DocSpec          stf:DocTypeIndic (OECD1 / OECD10), stf:DocRefId
     └── globe:JurisdictionSection
         ├── globe:RecJurCode       Partner/receiving jurisdiction
         ├── globe:Jurisdiction
@@ -312,14 +322,14 @@ globe:GLOBE_OECD (xmlns:globe="urn:oecd:ties:globe:v2" version="1.0")
         │   ├── globe:AdjustedFANIL
         │   ├── globe:NetGlobeIncome
         │   │   ├── globe:Total
-        │   │   └── globe:Adjustments × 26   (GIR2001–GIR2026)
+        │   │   └── globe:Adjustments × n   (GIR2001–GIR2026, non-zero only)
         │   ├── globe:IncomeTaxExpense
         │   ├── globe:ETRRate
         │   ├── globe:TopUpTaxPercentage
         │   ├── globe:AdjustedCoveredTax
         │   │   ├── globe:Total
         │   │   ├── globe:AggregrateCurrentTax
-        │   │   └── globe:Adjustments × 19   (GIR2701–GIR2720)
+        │   │   └── globe:Adjustments × n   (GIR2701–GIR2720, non-zero only)
         │   ├── globe:ExcessProfits
         │   ├── globe:QDMTT
         │   ├── globe:TopUpTax
@@ -348,12 +358,43 @@ ESTV provides a dedicated test environment at `https://eportal-a.admin.ch/`.
 | Behaviour | Test submissions are processed normally; you receive a status response |
 | DocTypeIndic | Use `OECD10` (Test / CTS mode in Advanced Options) |
 
-**ESTV error codes:**
+**ESTV error codes encountered:**
 
-| Code | Meaning |
-|---|---|
-| 50007 | Schema validation failed — root element or namespace not recognised |
-| 50008 | `DocTypeIndic` mismatch — wrong value for the portal being used (OECD0–3 for production, OECD10–12 for test) |
+| Code | Meaning | Status |
+|---|---|---|
+| 50007 | Schema validation failed — root element or namespace not recognised | Fixed in v1.4.1 |
+| 50008 | `DocTypeIndic` outside accepted range for the portal — OECD10 on production, or OECD1/mixed on CTS | See Known Issues |
+| 50009 | Production file contains test DocTypeIndic (OECD10–13) or filename starts with "Test" | Avoid by using correct mode |
+| 60013 | `OECD0` used in non-FilingInfo `DocTypeIndic` (ESTV also maps OECD10 → OECD0 for this check) | See Known Issues |
+| 60014 | Unknown/invalid `DocRefId` for resend option (OECD0) — triggered when ESTV maps OECD10 → OECD0 | See Known Issues |
+| 60022 | `GIR401` FilingCE TIN does not match any TIN in UPE element | Fixed in v1.5.0 (GeneralSection added) |
+| 70060 | `GIR2025` present but `IntShippingIncome` element missing | Fixed in v1.5.0 (zero-value filter) |
+| 98201 | GeneralSection missing or does not contain all RecJurCodes | Fixed in v1.5.0 (GeneralSection added) |
+
+---
+
+## Known Issues (CTS Test Portal)
+
+### Errors 60013 / 60014 — ESTV CTS validator maps OECD10 to OECD0
+
+**Status:** Under investigation. Pending clarification from ESTV (`info-gir@estv.admin.ch`).
+
+When submitting to the CTS test portal (`eportal-a.admin.ch`) with `OECD10` in all `DocTypeIndic` positions (correct test-mode behaviour per OECD spec), the ESTV business-rule validator fires:
+
+- **60013** on `GeneralSection` and `JurisdictionSection` — "OECD0 is only a valid input for the DocTypeIndic of the FilingInfo"
+- **60014** on `FilingInfo`, `GeneralSection`, and `JurisdictionSection` — "Unknown or invalid DocRefID for the Resend option (OECD0)"
+
+The error messages reference OECD0, but the actual XML contains OECD10. This indicates the ESTV CTS validator incorrectly maps OECD10 → OECD0 for business-rule purposes. Per the OECD GIR spec, OECD10 is the test-mode equivalent of OECD1 (new data) and should be valid in all `DocSpec` positions.
+
+**Workarounds attempted and their results:**
+
+| DocTypeIndic used | Portal result | Errors |
+|---|---|---|
+| OECD10 everywhere (v1.5.0) | "New" — portal accepts | 60013, 60014 (validator bug) |
+| OECD1 everywhere (v1.5.1) | "Unknown" — 50008 | Portal rejects |
+| OECD10 FilingInfo + OECD1 sections (v1.5.2) | "Unknown" — 50008 | Portal rejects |
+
+**Current state:** Reverted to v1.5.0 (OECD10 everywhere). This is the only configuration that passes the CTS portal-level check. The 60013/60014 errors are believed to be an ESTV CTS bug and need to be reported.
 
 ---
 

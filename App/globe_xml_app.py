@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -314,6 +314,9 @@ def build_xml(data: dict, cfg: dict) -> str:
 
     ET.indent(root, space="  ")
     raw = ET.tostring(root, encoding="unicode")
+    # ESTV validator requires the default namespace declaration to locate the element
+    # in its XSD. §6.4 shows no prefixes, but xmlns= must still be present.
+    raw = raw.replace('<GLOBE_OECD ', '<GLOBE_OECD xmlns="urn:oecd:ties:gir:v1" ', 1)
     return f"<?xml version='1.0' encoding='utf-8'?>\n{raw}"
 
 

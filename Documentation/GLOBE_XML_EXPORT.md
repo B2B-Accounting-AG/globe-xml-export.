@@ -284,7 +284,7 @@ The app runs 20 checks automatically after every export:
 ## Output XML Structure
 
 ```
-GLOBE_OECD (version="1.0")
+GLOBE_OECD (version="1.0" xmlns="urn:oecd:ties:gir:v1")
 ├── MessageSpec
 │   ├── TransmittingCountry
 │   ├── ReceivingCountry
@@ -368,6 +368,6 @@ Tel: +41 58 466 78 76
 - OECD GloBE Information Return XML Schema User Guide, January 2025  
   DOI: [10.1787/c594935a-en](https://doi.org/10.1787/c594935a-en)
 - Swiss ESTV Technische Wegleitung GIR (Technische-Wegleitung-GIR-de.pdf)  
-  §6.4 examples show all elements without namespace prefix — no `xmlns` declaration used
-- OECD XML Namespace (reference only, not declared in output): `urn:oecd:ties:gir:v1`
+  §6.4 examples show all elements without namespace prefix — default namespace declared as `xmlns="urn:oecd:ties:gir:v1"` on root element (no per-element prefix)
+- OECD XML Namespace (declared as default namespace on root): `urn:oecd:ties:gir:v1`
 - Swiss QDMTT legal basis: Art. 4 MinBestG (Mindestbesteuerungsgesetz)

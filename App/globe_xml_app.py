@@ -463,6 +463,94 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     return results
 
 
+# ─── TRANSLATIONS ────────────────────────────────────────────────────────────
+
+T: dict[str, dict[str, str]] = {
+    "step1":               {"EN": "1. Upload Excel file",              "DE": "1. Excel-Datei hochladen"},
+    "upload_label":        {"EN": "Calculation File (.xlsx or .xlsm)", "DE": "Berechnungsdatei (.xlsx oder .xlsm)"},
+    "upload_help":         {"EN": 'Swiss QDMTT calculation template with sheet "QDMTT 2024"',
+                            "DE": 'Schweizer QDMTT-Berechnungsvorlage mit Tabellenblatt "QDMTT 2024"'},
+    "step2":               {"EN": "2. Company details",                "DE": "2. Unternehmensangaben"},
+    "company_name":        {"EN": "Company name",                      "DE": "Firmenname"},
+    "tin":                 {"EN": "TIN",                               "DE": "UID/TIN"},
+    "tin_issued_by":       {"EN": "TIN issued by (ISO 3166-1 Alpha-2)","DE": "TIN ausgestellt von (ISO 3166-1 Alpha-2)"},
+    "jurisdiction":        {"EN": "Jurisdiction (ISO 3166-1 Alpha-2)", "DE": "Jurisdiktion (ISO 3166-1 Alpha-2)"},
+    "currency":            {"EN": "Currency (ISO 4217)",               "DE": "Währung (ISO 4217)"},
+    "fas_label":           {"EN": "Financial Accounting Standard",     "DE": "Rechnungslegungsstandard"},
+    "period_start":        {"EN": "Period start",                      "DE": "Periodenstart"},
+    "period_end":          {"EN": "Period end",                        "DE": "Periodenende"},
+    "partner_country":     {"EN": "Partner country (RecJurCode)",      "DE": "Partnerstaat (RecJurCode)"},
+    "partner_help":        {"EN": "ISO 3166-1 Alpha-2 country code of the partner jurisdiction (must not be CH)",
+                            "DE": "ISO 3166-1 Alpha-2 Ländercode des Partnerstaats (darf nicht CH sein)"},
+    "advanced":            {"EN": "Advanced options",                  "DE": "Erweiterte Optionen"},
+    "filing_role":         {"EN": "Filing role",                       "DE": "Einreichungsrolle"},
+    "filing_role_help":    {"EN": "Role as registered in the ESTV ePortal",
+                            "DE": "Rolle gemäss Registrierung im ESTV ePortal"},
+    "tin_type_label":      {"EN": "TIN type",                         "DE": "TIN-Typ"},
+    "tin_type_help":       {"EN": "Type of identifier used as TIN",   "DE": "Art des als TIN verwendeten Identifikators"},
+    "cfs_upe":             {"EN": "CFS of UPE",                       "DE": "CFS der UPE"},
+    "cfs_upe_help":        {"EN": "Type of Consolidated Financial Statement of the Ultimate Parent Entity",
+                            "DE": "Art des konsolidierten Abschlusses der obersten Muttergesellschaft"},
+    "gir401":              {"EN": "GIR401 — Ultimate Parent Entity (UPE)",    "DE": "GIR401 — Oberste Muttergesellschaft (UPE)"},
+    "gir402":              {"EN": "GIR402 — Designated Filing Entity (DFE)",  "DE": "GIR402 — Benannte Einreichungsstelle (DFE)"},
+    "gir404":              {"EN": "GIR404 — Constituent Entity (CE)",         "DE": "GIR404 — Untereinheit (CE)"},
+    "gir3001":             {"EN": "GIR3001 — Tax Identification Number (TIN)","DE": "GIR3001 — Steueridentifikationsnummer (TIN)"},
+    "gir3002":             {"EN": "GIR3002 — Functional equivalent",          "DE": "GIR3002 — Funktionales Äquivalent"},
+    "gir501":              {"EN": "GIR501 — Consolidated Financial Statement (subparagraph a)",
+                            "DE": "GIR501 — Konsolidierter Abschluss (Buchstabe a)"},
+    "gir502":              {"EN": "GIR502 — Combined Financial Statement (subparagraph b)",
+                            "DE": "GIR502 — Kombinierter Abschluss (Buchstabe b)"},
+    "gir503":              {"EN": "GIR503 — Other",                           "DE": "GIR503 — Sonstiges"},
+    "step3":               {"EN": "3. Export",                         "DE": "3. Export"},
+    "generate_btn":        {"EN": "Generate XML",                      "DE": "XML generieren"},
+    "upload_first":        {"EN": "Please upload an Excel file first.","DE": "Bitte laden Sie zuerst eine Excel-Datei hoch."},
+    "spinner_gen":         {"EN": "Reading Excel and building XML…",   "DE": "Excel wird gelesen und XML wird erstellt…"},
+    "upload_to_enable":    {"EN": "Upload the Excel file above to enable export.",
+                            "DE": "Laden Sie die Excel-Datei oben hoch, um den Export zu aktivieren."},
+    "validation_title":    {"EN": "Structural validation",             "DE": "Strukturelle Validierung"},
+    "checks_passed":       {"EN": "checks passed",                     "DE": "Prüfungen bestanden"},
+    "fix_issues":          {"EN": ("Fix the issues above, then re-generate. "
+                                   "Once all checks pass, validate against the official ESTV XSD before submission."),
+                            "DE": ("Beheben Sie die oben genannten Probleme und generieren Sie erneut. "
+                                   "Sobald alle Prüfungen bestanden sind, validieren Sie gegen das offizielle ESTV XSD vor der Einreichung.")},
+    "all_passed":          {"EN": "All structural checks passed.",     "DE": "Alle strukturellen Prüfungen bestanden."},
+    "download_xml":        {"EN": "⬇️  Download XML",                 "DE": "⬇️  XML herunterladen"},
+    "preview_xml":         {"EN": "Preview XML",                       "DE": "XML-Vorschau"},
+    "sheet_not_found":     {"EN": 'Sheet not found: {}. Make sure the file contains a sheet named "QDMTT 2024".',
+                            "DE": 'Tabellenblatt nicht gefunden: {}. Stellen Sie sicher, dass die Datei ein Blatt namens "QDMTT 2024" enthält.'},
+    "error_msg":           {"EN": "Error: {}",                         "DE": "Fehler: {}"},
+    "step4":               {"EN": "4. Encrypt for ESTV",              "DE": "4. Verschlüsselung für ESTV"},
+    "step4_caption":       {"EN": ("Upload the ESTV public key (ESTV-PublicKey.pem) from the myESTV portal. "
+                                   "The app will produce an encrypted .zip ready to upload directly to the GIR-Applikation."),
+                            "DE": ("Laden Sie den öffentlichen ESTV-Schlüssel (ESTV-PublicKey.pem) aus dem myESTV-Portal hoch. "
+                                   "Die App erstellt eine verschlüsselte .zip-Datei, die direkt in die GIR-Applikation hochgeladen werden kann.")},
+    "pem_label":           {"EN": "ESTV Public Key (.pem)",            "DE": "Öffentlicher ESTV-Schlüssel (.pem)"},
+    "encrypt_btn":         {"EN": "Encrypt & Download",               "DE": "Verschlüsseln & Herunterladen"},
+    "generate_first":      {"EN": "Generate the XML first (Step 3).", "DE": "Generieren Sie zuerst das XML (Schritt 3)."},
+    "upload_pem":          {"EN": "Upload the ESTV public key (.pem) above.",
+                            "DE": "Laden Sie oben den öffentlichen ESTV-Schlüssel (.pem) hoch."},
+    "spinner_enc":         {"EN": "Encrypting…",                      "DE": "Verschlüsselung läuft…"},
+    "download_zip":        {"EN": "⬇️  Download encrypted ZIP",       "DE": "⬇️  Verschlüsselte ZIP herunterladen"},
+    "ready_estv":          {"EN": "Ready to upload to myESTV → GIR-Applikation.",
+                            "DE": "Bereit zum Hochladen in myESTV → GIR-Applikation."},
+    "enc_failed":          {"EN": "Encryption failed: {}",            "DE": "Verschlüsselung fehlgeschlagen: {}"},
+    "gen_first_long":      {"EN": "Generate the XML in Step 3 first, then encrypt here.",
+                            "DE": "Generieren Sie zuerst das XML in Schritt 3, dann verschlüsseln Sie hier."},
+    "err_jurisdiction":    {"EN": "Jurisdiction must be exactly 2 uppercase letters (e.g. CH)",
+                            "DE": "Die Jurisdiktion muss genau 2 Grossbuchstaben sein (z.B. CH)"},
+    "err_currency":        {"EN": "Currency must be exactly 3 uppercase letters (e.g. CHF)",
+                            "DE": "Die Währung muss genau 3 Grossbuchstaben sein (z.B. CHF)"},
+    "err_period_start":    {"EN": "Period start must be YYYY-MM-DD",   "DE": "Periodenstart muss im Format JJJJ-MM-TT sein"},
+    "err_period_end":      {"EN": "Period end must be YYYY-MM-DD",     "DE": "Periodenende muss im Format JJJJ-MM-TT sein"},
+    "err_company":         {"EN": "Company name is required",          "DE": "Firmenname ist erforderlich"},
+    "err_tin":             {"EN": "TIN is required",                   "DE": "UID/TIN ist erforderlich"},
+    "err_tin_issued":      {"EN": "TIN issued by must be exactly 2 uppercase letters (e.g. CH)",
+                            "DE": "TIN ausgestellt von muss genau 2 Grossbuchstaben sein (z.B. CH)"},
+    "err_rec_jur":         {"EN": "Partner country (RecJurCode) must be exactly 2 uppercase letters (e.g. DE)",
+                            "DE": "Partnerstaat (RecJurCode) muss genau 2 Grossbuchstaben sein (z.B. DE)"},
+}
+
+
 # ─── STREAMLIT UI ────────────────────────────────────────────────────────────
 
 MME_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mme_logo.svg")
@@ -482,21 +570,43 @@ st.set_page_config(
     layout="centered",
 )
 
+# ── Language state ────────────────────────────────────────────────────────────
+if "lang" not in st.session_state:
+    st.session_state["lang"] = "EN"
+lang = st.session_state["lang"]
+
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Helvetica+Neue:wght@400;600;700&display=swap');
-
     html, body, [class*="css"] {
         font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
     }
 
-    /* Header bar */
-    [data-testid="stHeader"] { background-color: #FFFFFF; }
+    /* Hide the radio label */
+    div[data-testid="stRadio"] label { display: none; }
 
-    /* Sidebar background */
+    /* Style language radio as a pill toggle */
+    div[data-testid="stRadio"] > div {
+        display: flex; gap: 4px; justify-content: flex-end;
+    }
+    div[data-testid="stRadio"] > div > label {
+        display: flex !important;
+        padding: 2px 10px;
+        border: 1px solid #e2eaf1;
+        border-radius: 20px;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: #6a7681;
+        cursor: pointer;
+    }
+    div[data-testid="stRadio"] > div > label[data-checked="true"] {
+        background: #e0303c;
+        border-color: #e0303c;
+        color: white;
+    }
+
+    [data-testid="stHeader"] { background-color: #FFFFFF; }
     [data-testid="stSidebar"] { background-color: #f5f9fc; }
 
-    /* Primary button */
     .stButton > button[kind="primary"] {
         background-color: #e0303c !important;
         border: none !important;
@@ -505,11 +615,8 @@ st.markdown("""
         border-radius: 30px !important;
         padding: 0.4rem 1.5rem !important;
     }
-    .stButton > button[kind="primary"]:hover {
-        background-color: #c0272f !important;
-    }
+    .stButton > button[kind="primary"]:hover { background-color: #c0272f !important; }
 
-    /* Download button */
     .stDownloadButton > button {
         background-color: #e0303c !important;
         border: none !important;
@@ -518,25 +625,16 @@ st.markdown("""
         border-radius: 30px !important;
         width: 100%;
     }
-    .stDownloadButton > button:hover {
-        background-color: #c0272f !important;
-    }
+    .stDownloadButton > button:hover { background-color: #c0272f !important; }
 
-    /* Section headers */
     h2 { color: #313c45 !important; border-bottom: 2px solid #e0303c; padding-bottom: 4px; }
-
-    /* Metric value color */
     [data-testid="stMetricValue"] { color: #e0303c !important; font-weight: 700; }
-
-    /* Divider */
     hr { border-color: #e2eaf1 !important; }
-
-    /* Caption */
     .stCaption { color: #6a7681 !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# Header: logo + title (vertically centered)
+# ── Header row: logo + title | language toggle ────────────────────────────────
 if _MME_LOGO_SVG:
     scaled_svg = _MME_LOGO_SVG.replace(
         'width="204" height="65"',
@@ -545,137 +643,150 @@ if _MME_LOGO_SVG:
 else:
     scaled_svg = ""
 
-st.markdown(
-    f"""
-    <div style='display:flex; align-items:center; gap:24px; padding:12px 0 8px 0;'>
-        <div>{scaled_svg}</div>
-        <h1 style='margin:0; color:#313c45; font-size:1.4rem; font-weight:700;
-            font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;'>
-            GloBE Information Return (GIR)
-        </h1>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+hdr_left, hdr_right = st.columns([5, 1])
+with hdr_left:
+    st.markdown(
+        f"""<div style='display:flex; align-items:center; gap:24px; padding:12px 0 8px 0;'>
+            <div>{scaled_svg}</div>
+            <h1 style='margin:0; color:#313c45; font-size:1.4rem; font-weight:700;
+                font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;'>
+                GloBE Information Return (GIR)
+            </h1>
+        </div>""",
+        unsafe_allow_html=True,
+    )
+with hdr_right:
+    selected = st.radio(
+        "lang", ["EN", "DE"],
+        index=0 if lang == "EN" else 1,
+        horizontal=True,
+        label_visibility="collapsed",
+        key="lang_radio",
+    )
+    if selected != lang:
+        st.session_state["lang"] = selected
+        st.rerun()
 
 st.divider()
 
 # ── Step 1: Upload ────────────────────────────────────────────────────────────
-st.header("1. Upload Excel file")
+st.header(T["step1"][lang])
 uploaded = st.file_uploader(
-    "Calculation File (.xlsx or .xlsm)",
+    T["upload_label"][lang],
     type=["xlsx", "xlsm"],
-    help='The Swiss QDMTT calculation template with sheet "QDMTT 2024"',
+    help=T["upload_help"][lang],
 )
 
 # ── Step 2: Company details ───────────────────────────────────────────────────
-st.header("2. Company details")
+st.header(T["step2"][lang])
 
 col1, col2 = st.columns(2)
 with col1:
-    company_name   = st.text_input("Company name", value="PLACEHOLDER_COMPANY_AG")
-    tin_value      = st.text_input("TIN", value="CHE-123456789")
-    _tin_sel       = st.selectbox("TIN issued by (ISO 3166-1 Alpha-2)", COUNTRY_DISPLAY,
-                                  index=_country_idx("CH"))
-    tin_issued_by  = _tin_sel[:2]
-    _jur_sel       = st.selectbox("Jurisdiction (ISO 3166-1 Alpha-2)", COUNTRY_DISPLAY,
-                                  index=_country_idx("CH"))
-    jurisdiction   = _jur_sel[:2]
+    company_name  = st.text_input(T["company_name"][lang], value="PLACEHOLDER_COMPANY_AG")
+    tin_value     = st.text_input(T["tin"][lang], value="CHE-123456789")
+    _tin_sel      = st.selectbox(T["tin_issued_by"][lang], COUNTRY_DISPLAY,
+                                 index=_country_idx("CH"))
+    tin_issued_by = _tin_sel[:2]
+    _jur_sel      = st.selectbox(T["jurisdiction"][lang], COUNTRY_DISPLAY,
+                                 index=_country_idx("CH"))
+    jurisdiction  = _jur_sel[:2]
 
 with col2:
-    currency         = st.selectbox("Currency (ISO 4217)", CURRENCIES,
+    currency         = st.selectbox(T["currency"][lang], CURRENCIES,
                                     index=CURRENCIES.index("CHF"))
-    fas              = st.selectbox("Financial Accounting Standard", FAS_OPTIONS)
-    _period_start_dt = st.date_input("Period start", value=date(2024, 1, 1))
-    _period_end_dt   = st.date_input("Period end",   value=date(2024, 12, 31))
+    fas              = st.selectbox(T["fas_label"][lang], FAS_OPTIONS)
+    _period_start_dt = st.date_input(T["period_start"][lang], value=date(2024, 1, 1))
+    _period_end_dt   = st.date_input(T["period_end"][lang],   value=date(2024, 12, 31))
     period_start     = _period_start_dt.strftime("%Y-%m-%d")
     period_end       = _period_end_dt.strftime("%Y-%m-%d")
 
 _rec_sel     = st.selectbox(
-    "Partner country (RecJurCode)",
+    T["partner_country"][lang],
     COUNTRY_DISPLAY,
     index=_country_idx("DE"),
-    help="ISO 3166-1 Alpha-2 country code of the partner jurisdiction (must not be CH)",
+    help=T["partner_help"][lang],
 )
 rec_jur_code = _rec_sel[:2]
 
-with st.expander("Advanced options"):
+with st.expander(T["advanced"][lang]):
     reporting_role = st.selectbox(
-        "Filing role",
+        T["filing_role"][lang],
         ["GIR401", "GIR402", "GIR404"],
         format_func=lambda x: {
-            "GIR401": "GIR401 — Ultimate Parent Entity (UPE)",
-            "GIR402": "GIR402 — Designated Filing Entity (DFE)",
-            "GIR404": "GIR404 — Constituent Entity (CE)",
+            "GIR401": T["gir401"][lang],
+            "GIR402": T["gir402"][lang],
+            "GIR404": T["gir404"][lang],
         }[x],
-        help="Role as registered in the ESTV ePortal",
+        help=T["filing_role_help"][lang],
     )
     tin_type = st.selectbox(
-        "TIN type",
+        T["tin_type_label"][lang],
         ["GIR3001", "GIR3002"],
         format_func=lambda x: {
-            "GIR3001": "GIR3001 — Tax Identification Number (TIN)",
-            "GIR3002": "GIR3002 — Functional equivalent",
+            "GIR3001": T["gir3001"][lang],
+            "GIR3002": T["gir3002"][lang],
         }[x],
-        help="Type of identifier used as TIN",
+        help=T["tin_type_help"][lang],
     )
     cfs_of_upe = st.selectbox(
-        "CFS of UPE",
+        T["cfs_upe"][lang],
         ["GIR501", "GIR502", "GIR503"],
         format_func=lambda x: {
-            "GIR501": "GIR501 — Consolidated Financial Statement (subparagraph a)",
-            "GIR502": "GIR502 — Combined Financial Statement (subparagraph b)",
-            "GIR503": "GIR503 — Other",
+            "GIR501": T["gir501"][lang],
+            "GIR502": T["gir502"][lang],
+            "GIR503": T["gir503"][lang],
         }[x],
-        help="Type of Consolidated Financial Statement of the Ultimate Parent Entity",
+        help=T["cfs_upe_help"][lang],
     )
 
 # ── Step 3: Export ────────────────────────────────────────────────────────────
-st.header("3. Export")
+st.header(T["step3"][lang])
+
 
 def validate_inputs(cfg: dict) -> list[str]:
+    L = st.session_state.get("lang", "EN")
     errors = []
     if not re.match(r"^[A-Z]{2}$", cfg["jurisdiction"]):
-        errors.append("Jurisdiction must be exactly 2 uppercase letters (e.g. CH)")
+        errors.append(T["err_jurisdiction"][L])
     if not re.match(r"^[A-Z]{3}$", cfg["currency"]):
-        errors.append("Currency must be exactly 3 uppercase letters (e.g. CHF)")
+        errors.append(T["err_currency"][L])
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", cfg["period_start"]):
-        errors.append("Period start must be YYYY-MM-DD")
+        errors.append(T["err_period_start"][L])
     if not re.match(r"^\d{4}-\d{2}-\d{2}$", cfg["period_end"]):
-        errors.append("Period end must be YYYY-MM-DD")
+        errors.append(T["err_period_end"][L])
     if not cfg["company_name"].strip():
-        errors.append("Company name is required")
+        errors.append(T["err_company"][L])
     if not cfg["tin_value"].strip():
-        errors.append("TIN is required")
+        errors.append(T["err_tin"][L])
     if not re.match(r"^[A-Z]{2}$", cfg["tin_issued_by"]):
-        errors.append("TIN issued by must be exactly 2 uppercase letters (e.g. CH)")
+        errors.append(T["err_tin_issued"][L])
     if not re.match(r"^[A-Z]{2}$", cfg["rec_jur_code"]):
-        errors.append("Partner country (RecJurCode) must be exactly 2 uppercase letters (e.g. DE)")
+        errors.append(T["err_rec_jur"][L])
     return errors
 
 
-if st.button("Generate XML", type="primary", disabled=uploaded is None):
+if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None):
     if uploaded is None:
-        st.error("Please upload an Excel file first.")
+        st.error(T["upload_first"][lang])
     else:
-        with st.spinner("Reading Excel and building XML…"):
+        with st.spinner(T["spinner_gen"][lang]):
             try:
                 file_bytes = uploaded.read()
                 data = read_excel(file_bytes)
 
                 cfg = {
-                    "company_name":    company_name,
-                    "tin_value":       tin_value,
-                    "tin_issued_by":   tin_issued_by,
-                    "tin_type":        tin_type,
-                    "reporting_role":  reporting_role,
-                    "rec_jur_code":    rec_jur_code.strip().upper(),
-                    "currency":        currency,
-                    "jurisdiction":    jurisdiction,
-                    "fas":             fas,
-                    "cfs_of_upe":      cfs_of_upe,
-                    "period_start":    period_start,
-                    "period_end":      period_end,
+                    "company_name":   company_name,
+                    "tin_value":      tin_value,
+                    "tin_issued_by":  tin_issued_by,
+                    "tin_type":       tin_type,
+                    "reporting_role": reporting_role,
+                    "rec_jur_code":   rec_jur_code.strip().upper(),
+                    "currency":       currency,
+                    "jurisdiction":   jurisdiction,
+                    "fas":            fas,
+                    "cfs_of_upe":     cfs_of_upe,
+                    "period_start":   period_start,
+                    "period_end":     period_end,
                 }
 
                 input_errors = validate_inputs(cfg)
@@ -688,7 +799,6 @@ if st.button("Generate XML", type="primary", disabled=uploaded is None):
                 st.session_state["xml_str"]      = xml_str
                 st.session_state["xml_filename"] = f"gir_{period_end[:4]}_{jurisdiction}.xml"
 
-                # Summary metrics
                 etr_val = fmt_etr(data["adjusted_cov_tax"], data["net_globe_income"])
                 cols = st.columns(4)
                 cols[0].metric("AdjustedFANIL",  f"{data['adjusted_fanil']:,}")
@@ -696,15 +806,14 @@ if st.button("Generate XML", type="primary", disabled=uploaded is None):
                 cols[2].metric("AdjustedCovTax",  f"{data['adjusted_cov_tax']:,}")
                 cols[3].metric("ETR",              etr_val)
 
-                # Validation
                 checks  = validate_xml(xml_str)
                 n_pass  = sum(1 for _, ok, _ in checks)
                 n_total = len(checks)
                 all_ok  = n_pass == n_total
 
                 with st.expander(
-                    f"{'✅' if all_ok else '⚠️'}  Structural validation — "
-                    f"{n_pass}/{n_total} checks passed",
+                    f"{'✅' if all_ok else '⚠️'}  {T['validation_title'][lang]} — "
+                    f"{n_pass}/{n_total} {T['checks_passed'][lang]}",
                     expanded=not all_ok,
                 ):
                     for label, ok, detail in checks:
@@ -715,79 +824,70 @@ if st.button("Generate XML", type="primary", disabled=uploaded is None):
                         else:
                             st.markdown(f"{icon} &nbsp; {label}")
                     if not all_ok:
-                        st.caption(
-                            "Fix the issues above, then re-generate. "
-                            "Once all checks pass, validate against the official "
-                            "ESTV XSD before submission."
-                        )
+                        st.caption(T["fix_issues"][lang])
 
                 if all_ok:
-                    st.success("All structural checks passed.")
+                    st.success(T["all_passed"][lang])
 
-                # Download
                 filename = f"gir_{period_end[:4]}_{jurisdiction}.xml"
                 st.download_button(
-                    label="⬇️  Download XML",
+                    label=T["download_xml"][lang],
                     data=xml_str.encode("utf-8"),
                     file_name=filename,
                     mime="application/xml",
                 )
 
-                # Preview
-                with st.expander("Preview XML"):
+                with st.expander(T["preview_xml"][lang]):
                     st.code(xml_str, language="xml")
 
             except KeyError as e:
                 logging.exception("Sheet not found during Excel read")
-                st.error(f'Sheet not found: {e}. Make sure the file contains a sheet named "QDMTT 2024".')
+                st.error(T["sheet_not_found"][lang].format(e))
             except Exception as e:
                 logging.exception("XML generation failed")
-                st.error(f"Error: {e}")
+                st.error(T["error_msg"][lang].format(e))
 
 elif uploaded is None:
-    st.info("Upload the Excel file above to enable export.")
+    st.info(T["upload_to_enable"][lang])
 
 # ── Step 4: Encrypt for ESTV ──────────────────────────────────────────────────
 st.divider()
-st.header("4. Encrypt for ESTV")
-st.caption(
-    "Upload the ESTV public key (ESTV-PublicKey.pem) from the myESTV portal. "
-    "The app will produce an encrypted .zip ready to upload directly to the GIR-Applikation."
-)
+st.header(T["step4"][lang])
+st.caption(T["step4_caption"][lang])
 
-pem_file = st.file_uploader("ESTV Public Key (.pem)", type=["pem"])
+pem_file = st.file_uploader(T["pem_label"][lang], type=["pem"])
 
 xml_ready = "xml_str" in st.session_state
 
 if st.button(
-    "Encrypt & Download",
+    T["encrypt_btn"][lang],
     type="primary",
     disabled=(not xml_ready or pem_file is None),
 ):
     if not xml_ready:
-        st.error("Generate the XML first (Step 3).")
+        st.error(T["generate_first"][lang])
     elif pem_file is None:
-        st.error("Upload the ESTV public key (.pem) above.")
+        st.error(T["upload_pem"][lang])
     else:
-        with st.spinner("Encrypting…"):
+        with st.spinner(T["spinner_enc"][lang]):
             try:
                 pem_bytes    = pem_file.read()
                 zip_bytes    = encrypt_for_estv(st.session_state["xml_str"], pem_bytes)
                 base_name    = st.session_state["xml_filename"].replace(".xml", "")
                 zip_filename = f"{base_name}_encrypted.zip"
                 st.download_button(
-                    label="⬇️  Download encrypted ZIP",
+                    label=T["download_zip"][lang],
                     data=zip_bytes,
                     file_name=zip_filename,
                     mime="application/zip",
                 )
-                st.success("Ready to upload to myESTV → GIR-Applikation.")
+                st.success(T["ready_estv"][lang])
             except Exception as e:
                 logging.exception("Encryption failed")
-                st.error(f"Encryption failed: {e}")
+                st.error(T["enc_failed"][lang].format(e))
 
 if not xml_ready:
-    st.info("Generate the XML in Step 3 first, then encrypt here.")
+    st.info(T["gen_first_long"][lang])
 
 st.divider()
 st.markdown(

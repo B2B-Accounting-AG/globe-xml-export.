@@ -540,8 +540,12 @@ st.markdown("""
 col_logo, col_title = st.columns([1, 3])
 with col_logo:
     if _MME_LOGO_SVG:
+        scaled_svg = _MME_LOGO_SVG.replace(
+            'width="204" height="65"',
+            'width="90" height="29" viewBox="0 0 204 65"',
+        )
         st.markdown(
-            f"<div style='padding-top:12px; width:120px;'>{_MME_LOGO_SVG}</div>",
+            f"<div style='padding-top:16px;'>{scaled_svg}</div>",
             unsafe_allow_html=True,
         )
 with col_title:

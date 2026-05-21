@@ -759,7 +759,7 @@ with st.expander(T["advanced"][lang]):
 
 # ── Step 3: Export ────────────────────────────────────────────────────────────
 st.header(T["step3"][lang])
-
+st.write("")
 
 def validate_inputs(cfg: dict) -> list[str]:
     L = st.session_state.get("lang", "EN")

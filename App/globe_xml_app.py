@@ -58,6 +58,57 @@ COVERED_TAX_ADJUSTMENTS: dict[int, str] = {
     313: "GIR2718",
 }
 
+GIR_INCOME_LABELS: dict[str, str] = {
+    "GIR2001": "Excluded Dividends",
+    "GIR2002": "Excluded Equity Gain or Loss",
+    "GIR2003": "Included Revaluation Method Gain or Loss",
+    "GIR2004": "Excluded Gain or Loss on Disposal of Assets",
+    "GIR2005": "Excluded Asymmetric Foreign Currency Gains or Losses",
+    "GIR2006": "Excluded Policy Disallowed Expenses",
+    "GIR2007": "Excluded Fines and Penalties",
+    "GIR2008": "Excluded Prior Period Errors and Changes in Accounting Principles",
+    "GIR2009": "Accrual to Cash Basis Adjustments",
+    "GIR2010": "Excluded Stock-based Compensation",
+    "GIR2011": "Excluded Arm's Length Adjustment",
+    "GIR2012": "Included Qualified Refundable Tax Credits",
+    "GIR2013": "Excluded Non-Qualified Refundable Tax Credits",
+    "GIR2014": "Excluded Equity Method Profit or Loss",
+    "GIR2015": "Excluded Gains or Losses on Qualifying Intra-group Asset Transfers",
+    "GIR2016": "Asymmetric Gains or Losses from Qualified Group Financing Arrangements",
+    "GIR2017": "Excluded Amounts Attributable to Excluded Entities",
+    "GIR2018": "Included Net Tax Expense",
+    "GIR2019": "Excluded Insurance Company Policyholder Income",
+    "GIR2020": "Flow-through Entity Adjustments",
+    "GIR2021": "International Shipping Income Exclusion",
+    "GIR2022": "Excluded Qualified Refundable Tax Credits for Marketable Transferable Tax Credits",
+    "GIR2023": "Other Adjustments (Increasing)",
+    "GIR2024": "Other Adjustments (Decreasing)",
+    "GIR2025": "Qualified Domestic Minimum Top-up Tax Deduction",
+    "GIR2026": "Substance Based Income Exclusion",
+}
+
+GIR_TAX_LABELS: dict[str, str] = {
+    "GIR2701": "Current Tax Expense",
+    "GIR2703": "Deferred Tax Adjustments",
+    "GIR2704": "Uncollected Prior Period Taxes",
+    "GIR2705": "Tax on Distributions",
+    "GIR2706": "Non-allowable Taxes",
+    "GIR2707": "Excluded Dividends Taxes",
+    "GIR2708": "Additional Covered Tax for Prior Years",
+    "GIR2709": "Qualified Domestic Minimum Top-up Tax",
+    "GIR2710": "Reduced Taxes Due to Deferred Tax Liability",
+    "GIR2711": "CFC Tax Allocations",
+    "GIR2712": "Blended CFC Tax Allocation Adjustments",
+    "GIR2713": "Qualified Imputation Tax",
+    "GIR2714": "Uncertainty in Taxes",
+    "GIR2715": "Post-filing Adjustments",
+    "GIR2716": "Transitional UTPR Safe Harbour Tax",
+    "GIR2717": "Qualified Domestic Minimum Top-up Tax for STTR Purposes",
+    "GIR2718": "Other Adjustments",
+    "GIR2719": "Excess Negative Tax Amount Generated",
+    "GIR2720": "Excess Negative Tax Amount Utilized",
+}
+
 ROW_EXCESS_NEG_GENERATED = 95
 ROW_EXCESS_NEG_UTILIZED  = 96
 EXCESS_NEG_COL = "H"
@@ -548,6 +599,26 @@ T: dict[str, dict[str, str]] = {
                             "DE": "TIN ausgestellt von muss genau 2 Grossbuchstaben sein (z.B. CH)"},
     "err_rec_jur":         {"EN": "Partner country (RecJurCode) must be exactly 2 uppercase letters (e.g. DE)",
                             "DE": "Partnerstaat (RecJurCode) muss genau 2 Grossbuchstaben sein (z.B. DE)"},
+    "summary_label":       {"EN": "Plain Language Summary",            "DE": "Verständliche Zusammenfassung"},
+    "sum_filing":          {"EN": "Filing Information",               "DE": "Einreichungsangaben"},
+    "sum_company":         {"EN": "Company",                          "DE": "Unternehmen"},
+    "sum_tin":             {"EN": "TIN",                              "DE": "UID/TIN"},
+    "sum_jurisdiction":    {"EN": "Jurisdiction",                     "DE": "Jurisdiktion"},
+    "sum_period":          {"EN": "Reporting Period",                 "DE": "Berichtsperiode"},
+    "sum_currency":        {"EN": "Currency",                         "DE": "Währung"},
+    "sum_fas":             {"EN": "Accounting Standard",              "DE": "Rechnungslegungsstandard"},
+    "sum_role":            {"EN": "Filing Role",                      "DE": "Einreichungsrolle"},
+    "sum_partner":         {"EN": "Partner Country",                  "DE": "Partnerstaat"},
+    "sum_income":          {"EN": "GloBE Income Computation",        "DE": "GloBE-Einkommensberechnung"},
+    "sum_fanil":           {"EN": "Adjusted FANIL",                   "DE": "Angepasstes FANIL"},
+    "sum_income_adj":      {"EN": "Income Adjustments (non-zero)",   "DE": "Einkommensanpassungen (ungleich null)"},
+    "sum_net_income":      {"EN": "Net GloBE Income",                "DE": "Netto GloBE-Einkommen"},
+    "sum_tax":             {"EN": "Covered Tax Computation",         "DE": "Berechnung der anrechenbaren Steuer"},
+    "sum_curr_tax":        {"EN": "Aggregate Current Tax",           "DE": "Aggregierte laufende Steuer"},
+    "sum_tax_adj":         {"EN": "Tax Adjustments (non-zero)",      "DE": "Steueranpassungen (ungleich null)"},
+    "sum_adj_tax":         {"EN": "Adjusted Covered Tax",            "DE": "Angepasste anrechenbare Steuer"},
+    "sum_result":          {"EN": "Result",                           "DE": "Ergebnis"},
+    "sum_etr":             {"EN": "Effective Tax Rate (ETR)",        "DE": "Effektiver Steuersatz (ETR)"},
     "disclaimer_label":    {"EN": "Disclaimer",                        "DE": "Haftungsausschluss"},
     "disclaimer_text":     {
         "EN": (
@@ -854,6 +925,80 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     file_name=filename,
                     mime="application/xml",
                 )
+
+                # Plain language summary
+                with st.expander(T["summary_label"][lang]):
+                    C = cfg["currency"]
+
+                    def _row(label, value, bold=False):
+                        ca, cb = st.columns([2, 3])
+                        ca.markdown(
+                            f"<span style='color:#6a7681;font-size:0.84rem;'>{label}</span>",
+                            unsafe_allow_html=True,
+                        )
+                        color = "#e0303c" if bold else "#313c45"
+                        weight = "700" if bold else "600"
+                        cb.markdown(
+                            f"<span style='color:{color};font-size:0.84rem;font-weight:{weight};'>{value}</span>",
+                            unsafe_allow_html=True,
+                        )
+
+                    st.markdown(f"**{T['sum_filing'][lang]}**")
+                    _row(T["sum_company"][lang],     cfg["company_name"])
+                    _row(T["sum_tin"][lang],         cfg["tin_value"])
+                    _row(T["sum_jurisdiction"][lang],cfg["jurisdiction"])
+                    _row(T["sum_period"][lang],      f"{cfg['period_start']} – {cfg['period_end']}")
+                    _row(T["sum_currency"][lang],    cfg["currency"])
+                    _row(T["sum_fas"][lang],         cfg["fas"])
+                    _row(T["sum_role"][lang],        cfg["reporting_role"])
+                    _row(T["sum_partner"][lang],     cfg["rec_jur_code"])
+
+                    st.markdown("---")
+                    st.markdown(f"**{T['sum_income'][lang]}**")
+                    _row(T["sum_fanil"][lang], f"{data['adjusted_fanil']:,} {C}")
+
+                    nz_income = [(code, amt) for code, amt in data["income_adj"] if amt != 0]
+                    if nz_income:
+                        st.caption(T["sum_income_adj"][lang])
+                        for code, amt in nz_income:
+                            desc = GIR_INCOME_LABELS.get(code, code)
+                            ca, cb = st.columns([2, 3])
+                            ca.markdown(
+                                f"<span style='color:#6a7681;font-size:0.78rem;'>{code} — {desc}</span>",
+                                unsafe_allow_html=True,
+                            )
+                            cb.markdown(
+                                f"<span style='font-size:0.78rem;'>{amt:,} {C}</span>",
+                                unsafe_allow_html=True,
+                            )
+
+                    _row(T["sum_net_income"][lang], f"{data['net_globe_income']:,} {C}", bold=True)
+
+                    st.markdown("---")
+                    st.markdown(f"**{T['sum_tax'][lang]}**")
+                    _row(T["sum_curr_tax"][lang], f"{data['aggregate_curr_tax']:,} {C}")
+
+                    nz_tax = [(code, amt) for code, amt in data["cov_tax_adj"] if amt != 0]
+                    if nz_tax:
+                        st.caption(T["sum_tax_adj"][lang])
+                        for code, amt in nz_tax:
+                            desc = GIR_TAX_LABELS.get(code, code)
+                            ca, cb = st.columns([2, 3])
+                            ca.markdown(
+                                f"<span style='color:#6a7681;font-size:0.78rem;'>{code} — {desc}</span>",
+                                unsafe_allow_html=True,
+                            )
+                            cb.markdown(
+                                f"<span style='font-size:0.78rem;'>{amt:,} {C}</span>",
+                                unsafe_allow_html=True,
+                            )
+
+                    _row(T["sum_adj_tax"][lang], f"{data['adjusted_cov_tax']:,} {C}", bold=True)
+
+                    st.markdown("---")
+                    st.markdown(f"**{T['sum_result'][lang]}**")
+                    etr_pct = float(etr_val) * 100
+                    _row(T["sum_etr"][lang], f"{etr_val} ({etr_pct:.2f}%)", bold=True)
 
                 with st.expander(T["preview_xml"][lang]):
                     st.code(xml_str, language="xml")

@@ -1,7 +1,7 @@
 # GloBE XML Export — Documentation
 
 **MME Legal | Tax | Compliance** — in cooperation with Mutara  
-Swiss QDMTT 2024 · OECD GIR XML Schema (January 2025)
+Swiss QDMTT 2024 · OECD GIR XML Schema (January 2025) · **v1.4.2**
 
 ---
 
@@ -22,6 +22,7 @@ Two delivery formats are available:
 - Plain language summary of key figures
 - One-click encryption for ESTV — no separate encryptor tool needed
 - Bundled ESTV public key (valid until 2027-02-04)
+- Test / Production submission mode toggle (DocTypeIndic OECD10 vs OECD1)
 
 ---
 
@@ -34,6 +35,7 @@ App/
 ├── ExportGlobEXML.bas        # VBA macro (import into .xlsm)
 ├── requirements.txt          # Python dependencies
 ├── config.toml               # App theme (MME brand colours)
+├── VERSION                   # Current version number
 ├── mme_logo.svg              # MME logo
 ├── mutara_logo.png           # Mutara logo
 ├── favicon.png               # Browser tab icon (MME three-bar mark)
@@ -99,6 +101,7 @@ The file must contain a sheet named exactly **`QDMTT 2024`**.
 | Filing role | `GIR401 — Ultimate Parent Entity (UPE)` | GIR401 = UPE, GIR402 = DFE, GIR404 = CE (matches ESTV ePortal roles) |
 | TIN type | `GIR3001 — Tax Identification Number (TIN)` | GIR3001 = TIN, GIR3002 = Functional equivalent |
 | CFS of UPE | `GIR501 — Consolidated Financial Statement (subparagraph a)` | GIR501–GIR503 |
+| Submission mode | `Test / CTS (OECD10)` | **Test / CTS** for `eportal-a.admin.ch`; **Production (OECD1)** for `eportal.admin.ch` |
 
 ### Step 3 — Export
 Click **Generate XML**. The app will:
@@ -247,7 +250,7 @@ The tool reads from sheet **`QDMTT 2024`** only.
 |---|---|
 | `ETRRate` | `AdjustedCoveredTax ÷ NetGlobeIncome` (clamped 0–1, 4 decimal places) |
 | `TopUpTaxPercentage` | Fixed `0.0000` (no top-up tax for QDMTT-qualified entities) |
-| `MessageRefId` | `{jurisdiction}2024{jurisdiction}{uuid}` |
+| `MessageRefId` | `{jurisdiction}{year}{jurisdiction}{uuid}` |
 | `Timestamp` | UTC time of generation |
 
 ---
@@ -284,25 +287,26 @@ The app runs 20 checks automatically after every export:
 ## Output XML Structure
 
 ```
-globe:GLOBE_OECD (xmlns:globe="urn:oecd:ties:gir:v1" version="1.0")
+globe:GLOBE_OECD (xmlns:globe="urn:oecd:ties:globe:v2" version="1.0")
 ├── globe:MessageSpec
+│   ├── globe:SendingEntityIN      TIN of filing entity  ← must be first
 │   ├── globe:TransmittingCountry
 │   ├── globe:ReceivingCountry
 │   ├── globe:MessageType          GIR
 │   ├── globe:MessageRefId
 │   ├── globe:MessageTypeIndic     GIR101
 │   ├── globe:ReportingPeriod
-│   ├── globe:Timestamp
-│   └── globe:SendingEntityIN      TIN of filing entity
+│   └── globe:Timestamp
 └── globe:GLOBEBody
     ├── globe:FilingInfo
     │   ├── globe:FilingCE         ResCountryCode, Name, TIN, Role
     │   ├── globe:AccountingInfo   CFSofUPE, FAS, Currency
     │   ├── globe:Period           Start, End
     │   ├── globe:NameMNE
-    │   └── globe:DocSpec          DocTypeIndic, DocRefId
+    │   └── globe:DocSpec          stf:DocTypeIndic (OECD1 / OECD10), stf:DocRefId
     └── globe:JurisdictionSection
         ├── globe:RecJurCode       Partner/receiving jurisdiction
+        ├── globe:Jurisdiction
         ├── globe:GLoBETax / ETR / ETRStatus / ETRComputation / OverallComputation
         │   ├── globe:FANIL
         │   ├── globe:AdjustedFANIL
@@ -312,12 +316,24 @@ globe:GLOBE_OECD (xmlns:globe="urn:oecd:ties:gir:v1" version="1.0")
         │   ├── globe:IncomeTaxExpense
         │   ├── globe:ETRRate
         │   ├── globe:TopUpTaxPercentage
-        │   └── globe:AdjustedCoveredTax
-        │       ├── globe:Total
-        │       ├── globe:AggregrateCurrentTax
-        │       └── globe:Adjustments × 19   (GIR2701–GIR2720)
-        └── globe:DocSpec          DocTypeIndic, DocRefId
+        │   ├── globe:AdjustedCoveredTax
+        │   │   ├── globe:Total
+        │   │   ├── globe:AggregrateCurrentTax
+        │   │   └── globe:Adjustments × 19   (GIR2701–GIR2720)
+        │   ├── globe:ExcessProfits
+        │   ├── globe:QDMTT
+        │   ├── globe:TopUpTax
+        │   └── globe:ExcessNegTaxExpense
+        └── globe:DocSpec          stf:DocTypeIndic (OECD1 / OECD10), stf:DocRefId
 ```
+
+**Namespaces used:**
+
+| Prefix | URI | Used for |
+|---|---|---|
+| `globe` | `urn:oecd:ties:globe:v2` | All GIR elements (root + body) |
+| `stf` | `urn:oecd:ties:globestf:v5` | DocSpec children (`DocTypeIndic`, `DocRefId`) |
+| `xsi` | `http://www.w3.org/2001/XMLSchema-instance` | `schemaLocation` attribute |
 
 ---
 
@@ -330,6 +346,14 @@ ESTV provides a dedicated test environment at `https://eportal-a.admin.ch/`.
 | Test window | 7 April – 3 July 2026 |
 | Invitation code | Not sent by post — email `gir-test@estv.admin.ch` with your ESTV-ID (052.XXXX.XXXX) and registration date |
 | Behaviour | Test submissions are processed normally; you receive a status response |
+| DocTypeIndic | Use `OECD10` (Test / CTS mode in Advanced Options) |
+
+**ESTV error codes:**
+
+| Code | Meaning |
+|---|---|
+| 50007 | Schema validation failed — root element or namespace not recognised |
+| 50008 | `DocTypeIndic` mismatch — wrong value for the portal being used (OECD0–3 for production, OECD10–12 for test) |
 
 ---
 
@@ -337,15 +361,24 @@ ESTV provides a dedicated test environment at `https://eportal-a.admin.ch/`.
 
 Once all 20 structural checks pass:
 
-1. Optionally validate against the official **ESTV XSD** (Swiss Federal Tax Administration):
+1. Validate locally against the OECD XSD (available in `Documentation/globe-xsd/GLOBEXML_v1.0.xsd`):
    ```bash
-   xmllint --schema estv_gir.xsd output/gir_2024_CH.xml
+   python3 -c "
+   from lxml import etree
+   schema = etree.XMLSchema(etree.parse('Documentation/globe-xsd/GLOBEXML_v1.0.xsd'))
+   doc = etree.parse('App/output/gir_2024_CH.xml')
+   print('Valid:', schema.validate(doc))
+   print(schema.error_log)
+   "
    ```
-   > The ESTV XSD had not been publicly released as of January 2025. Once available, drop it into the project folder and run the command above.
 
-2. Click **Encrypt & Download** in Step 4 — the encrypted ZIP is produced immediately using the bundled ESTV public key. No separate encryptor tool required.
+2. In the app, set **Submission mode** in Advanced Options:
+   - `Test / CTS (OECD10)` → upload to `https://eportal-a.admin.ch/`
+   - `Production (OECD1)` → upload to `https://eportal.admin.ch/`
 
-3. Upload the encrypted ZIP to the **myESTV portal → GIR-Applikation** (max 10 MB).
+3. Click **Encrypt & Download** — the encrypted ZIP is produced immediately using the bundled ESTV public key. No separate encryptor tool required.
+
+4. Upload the encrypted ZIP to the **myESTV portal → GIR-Applikation** (max 10 MB).
 
 ## Disclaimer
 
@@ -367,6 +400,8 @@ Tel: +41 58 466 78 76
 
 - OECD GloBE Information Return XML Schema User Guide, January 2025  
   DOI: [10.1787/c594935a-en](https://doi.org/10.1787/c594935a-en)
-- Swiss ESTV Technische Wegleitung GIR (Technische-Wegleitung-GIR-de.pdf)
-- OECD XML Namespace: `urn:oecd:ties:gir:v1` — declared with prefix `globe:` on root element, consistent with the CRS schema pattern (`crs:CRS_OECD xmlns:crs="urn:oecd:ties:crs:v3"`). All elements carry the `globe:` prefix.
+- OECD GIR XML Schema: `GLOBEXML_v1.0.xsd` (`Documentation/globe-xsd/`)
+- Swiss ESTV Technische Wegleitung GIR (`Documentation/Technische-Wegleitung-GIR-de.pdf`)
+- XML Namespace (GIR elements): `urn:oecd:ties:globe:v2` with prefix `globe:`
+- XML Namespace (DocSpec): `urn:oecd:ties:globestf:v5` with prefix `stf:`
 - Swiss QDMTT legal basis: Art. 4 MinBestG (Mindestbesteuerungsgesetz)

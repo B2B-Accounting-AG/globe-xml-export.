@@ -587,6 +587,10 @@ T: dict[str, dict[str, str]] = {
     "enc_failed":          {"EN": "Encryption failed: {}",            "DE": "Verschlüsselung fehlgeschlagen: {}"},
     "gen_first_long":      {"EN": "Generate the XML in Step 3 first, then encrypt here.",
                             "DE": "Generieren Sie zuerst das XML in Schritt 3, dann verschlüsseln Sie hier."},
+    "bundled_key_info":    {"EN": "Using bundled ESTV public key (encryptor.estv.admin.ch, valid until 2027-02-04).",
+                            "DE": "Verwendung des integrierten ESTV-Schlüssels (encryptor.estv.admin.ch, gültig bis 04.02.2027)."},
+    "override_key":        {"EN": "Use a different key",              "DE": "Anderen Schlüssel verwenden"},
+    "override_active":     {"EN": "Custom key active",                "DE": "Eigener Schlüssel aktiv"},
     "err_jurisdiction":    {"EN": "Jurisdiction must be exactly 2 uppercase letters (e.g. CH)",
                             "DE": "Die Jurisdiktion muss genau 2 Grossbuchstaben sein (z.B. CH)"},
     "err_currency":        {"EN": "Currency must be exactly 3 uppercase letters (e.g. CHF)",
@@ -642,7 +646,17 @@ T: dict[str, dict[str, str]] = {
 
 # ─── STREAMLIT UI ────────────────────────────────────────────────────────────
 
-MME_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mme_logo.svg")
+MME_LOGO_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mme_logo.svg")
+ESTV_PEM_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "estv-publickey.pem")
+
+def _load_estv_pem() -> bytes | None:
+    try:
+        with open(ESTV_PEM_PATH, "rb") as f:
+            return f.read()
+    except OSError:
+        return None
+
+_BUNDLED_PEM = _load_estv_pem()
 
 def _load_mme_logo_svg():
     try:
@@ -1017,26 +1031,35 @@ elif uploaded is None:
 # ── Step 4: Encrypt for ESTV ──────────────────────────────────────────────────
 st.divider()
 st.header(T["step4"][lang])
-st.caption(T["step4_caption"][lang])
-
-pem_file = st.file_uploader(T["pem_label"][lang], type=["pem"])
 
 xml_ready = "xml_str" in st.session_state
+
+# Determine which PEM to use
+pem_override = None
+with st.expander(T["override_key"][lang]):
+    pem_file = st.file_uploader(T["pem_label"][lang], type=["pem", "cer"])
+    if pem_file is not None:
+        pem_override = pem_file.read()
+        st.success(T["override_active"][lang])
+
+pem_bytes_to_use = pem_override if pem_override else _BUNDLED_PEM
+
+if pem_bytes_to_use and pem_bytes_to_use == _BUNDLED_PEM:
+    st.caption(T["bundled_key_info"][lang])
 
 if st.button(
     T["encrypt_btn"][lang],
     type="primary",
-    disabled=(not xml_ready or pem_file is None),
+    disabled=(not xml_ready or pem_bytes_to_use is None),
 ):
     if not xml_ready:
         st.error(T["generate_first"][lang])
-    elif pem_file is None:
+    elif pem_bytes_to_use is None:
         st.error(T["upload_pem"][lang])
     else:
         with st.spinner(T["spinner_enc"][lang]):
             try:
-                pem_bytes    = pem_file.read()
-                zip_bytes    = encrypt_for_estv(st.session_state["xml_str"], pem_bytes)
+                zip_bytes    = encrypt_for_estv(st.session_state["xml_str"], pem_bytes_to_use)
                 base_name    = st.session_state["xml_filename"].replace(".xml", "")
                 zip_filename = f"{base_name}_encrypted.zip"
                 st.download_button(

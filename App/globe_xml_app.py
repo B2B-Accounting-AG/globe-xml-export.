@@ -318,7 +318,7 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(period, "End",   cfg["period_end"])
     sub(fi, "NameMNE", cfg["company_name"])
 
-    doc_type_indic = "OECD10" if test_mode else "OECD1"
+    doc_type_indic = "OECD1"
 
     fi_doc = sub(fi, "DocSpec")
     ET.SubElement(fi_doc, S + "DocTypeIndic").text = doc_type_indic

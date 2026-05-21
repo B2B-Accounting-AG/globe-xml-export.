@@ -259,8 +259,8 @@ The app runs 20 checks automatically after every export:
 | # | Check |
 |---|---|
 | 1 | Well-formed XML |
-| 2 | Namespace (`urn:oecd:ties:gir:v1`) |
-| 3 | MessageHeader — all required fields present (incl. `SendingEntityIN`) |
+| 2 | Namespace (`urn:oecd:ties:gir:v1` declared as `xmlns:globe`) |
+| 3 | MessageSpec — all required fields present (incl. `SendingEntityIN`) |
 | 4 | MessageRefID format (`CH[year]CH[uuid]`) |
 | 5 | Timestamp format (`YYYY-MM-DDTHH:MM:SS`) |
 | 6 | Period dates format (`YYYY-MM-DD`) |
@@ -284,39 +284,39 @@ The app runs 20 checks automatically after every export:
 ## Output XML Structure
 
 ```
-GloBE_Message (xmlns="urn:oecd:ties:gir:v1")
-├── MessageHeader
-│   ├── TransmittingCountry
-│   ├── ReceivingCountry
-│   ├── MessageType            GIR
-│   ├── MessageRefID
-│   ├── MessageTypeIndic       GIR101
-│   ├── ReportingPeriod
-│   ├── Timestamp
-│   └── SendingEntityIN        TIN of filing entity
-└── GloBE_Body
-    ├── FilingInfo
-    │   ├── FilingCE           ResCountryCode, Name, TIN, Role
-    │   ├── AccountingInfo     CFSofUPE, FAS, Currency
-    │   ├── Period             Start, End
-    │   ├── NameMNE
-    │   └── DocSpec            DocTypeIndic, DocRefId
-    └── JurisdictionSection
-        ├── RecJurCode         Partner/receiving jurisdiction
-        ├── GloBE_Tax / ETR / ETR_Status / ETR_Computation / OverallComputation
-        │   ├── FANIL
-        │   ├── AdjustedFANIL
-        │   ├── NetGlobeIncome
-        │   │   ├── Total
-        │   │   └── Adjustments × 26   (GIR2001–GIR2026)
-        │   ├── IncomeTaxExpense
-        │   ├── ETRRate
-        │   ├── TopUpTaxPercentage
-        │   └── AdjustedCoveredTax
-        │       ├── Total
-        │       ├── AggregrateCurrentTax
-        │       └── Adjustments × 19   (GIR2701–GIR2720)
-        └── DocSpec            DocTypeIndic, DocRefId
+GLOBE_OECD (xmlns:globe="urn:oecd:ties:gir:v1")
+├── globe:MessageSpec
+│   ├── globe:TransmittingCountry
+│   ├── globe:ReceivingCountry
+│   ├── globe:MessageType            GIR
+│   ├── globe:MessageRefID
+│   ├── globe:MessageTypeIndic       GIR101
+│   ├── globe:ReportingPeriod
+│   ├── globe:Timestamp
+│   └── globe:SendingEntityIN        TIN of filing entity
+└── globe:GLOBEBody
+    ├── globe:FilingInfo
+    │   ├── globe:FilingCE           ResCountryCode, Name, TIN, Role
+    │   ├── globe:AccountingInfo     CFSofUPE, FAS, Currency
+    │   ├── globe:Period             Start, End
+    │   ├── globe:NameMNE
+    │   └── globe:DocSpec            DocTypeIndic, DocRefId
+    └── globe:JurisdictionSection
+        ├── globe:RecJurCode         Partner/receiving jurisdiction
+        ├── globe:GLoBETax / globe:ETR / globe:ETRStatus / globe:ETRComputation / globe:OverallComputation
+        │   ├── globe:FANIL
+        │   ├── globe:AdjustedFANIL
+        │   ├── globe:NetGlobeIncome
+        │   │   ├── globe:Total
+        │   │   └── globe:Adjustments × 26   (GIR2001–GIR2026)
+        │   ├── globe:IncomeTaxExpense
+        │   ├── globe:ETRRate
+        │   ├── globe:TopUpTaxPercentage
+        │   └── globe:AdjustedCoveredTax
+        │       ├── globe:Total
+        │       ├── globe:AggregrateCurrentTax
+        │       └── globe:Adjustments × 19   (GIR2701–GIR2720)
+        └── globe:DocSpec            DocTypeIndic, DocRefId
 ```
 
 ---

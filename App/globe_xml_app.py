@@ -34,7 +34,7 @@ logging.basicConfig(
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
 GIR_NS = "urn:oecd:ties:gir:v1"
-ET.register_namespace("", GIR_NS)
+ET.register_namespace("globe", GIR_NS)
 N = f"{{{GIR_NS}}}"
 
 
@@ -240,9 +240,9 @@ def build_xml(data: dict, cfg: dict) -> str:
     year = cfg["period_end"][:4]
     msg_ref = f"{cfg['jurisdiction']}{year}{cfg['jurisdiction']}{str(uuid.uuid4())}"
 
-    root = ET.Element(N + "GloBE_Message")
+    root = ET.Element("GLOBE_OECD")
 
-    hdr = sub(root, "MessageHeader")
+    hdr = sub(root, "MessageSpec")
     sub(hdr, "TransmittingCountry", cfg["jurisdiction"])
     sub(hdr, "ReceivingCountry",    cfg["jurisdiction"])
     sub(hdr, "MessageType",         "GIR")
@@ -252,7 +252,7 @@ def build_xml(data: dict, cfg: dict) -> str:
     sub(hdr, "Timestamp",           now)
     sub(hdr, "SendingEntityIN",     cfg["tin_value"])
 
-    body = sub(root, "GloBE_Body")
+    body = sub(root, "GLOBEBody")
     fi   = sub(body, "FilingInfo")
 
     filing_ce = sub(fi, "FilingCE")
@@ -279,10 +279,10 @@ def build_xml(data: dict, cfg: dict) -> str:
     jur_sec = sub(body, "JurisdictionSection")
     sub(jur_sec, "RecJurCode", cfg["rec_jur_code"])
 
-    globe_tax  = sub(jur_sec, "GloBE_Tax")
+    globe_tax  = sub(jur_sec, "GLoBETax")
     etr        = sub(globe_tax, "ETR")
-    etr_status = sub(etr, "ETR_Status")
-    etr_comp   = sub(etr_status, "ETR_Computation")
+    etr_status = sub(etr, "ETRStatus")
+    etr_comp   = sub(etr_status, "ETRComputation")
     oc         = sub(etr_comp, "OverallComputation")
 
     sub(oc, "FANIL",         data["adjusted_fanil"])
@@ -383,32 +383,33 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     def findall(path):
         return root.findall(path, g)
 
-    # 2. Namespace
-    check("Namespace (urn:oecd:ties:gir:v1)", GIR_NS in root.tag)
+    # 2. Namespace declared (root is GLOBE_OECD without prefix; globe: ns on children)
+    check("Namespace (urn:oecd:ties:gir:v1)",
+          root.tag == "GLOBE_OECD" or GIR_NS in root.tag)
 
-    # 3. MessageHeader — all required fields (incl. Swiss SendingEntityIN)
+    # 3. MessageSpec — all required fields (incl. Swiss SendingEntityIN)
     hdr_fields = ["TransmittingCountry", "ReceivingCountry", "MessageType",
                   "MessageRefID", "MessageTypeIndic", "ReportingPeriod",
                   "Timestamp", "SendingEntityIN"]
-    missing_hdr = [f for f in hdr_fields if text(f"g:MessageHeader/g:{f}") is None]
-    check("MessageHeader — all required fields (incl. SendingEntityIN)", not missing_hdr,
+    missing_hdr = [f for f in hdr_fields if text(f"g:MessageSpec/g:{f}") is None]
+    check("MessageSpec — all required fields (incl. SendingEntityIN)", not missing_hdr,
           f"Missing: {', '.join(missing_hdr)}" if missing_hdr else "")
 
     # 4. MessageRefID format: CH[0-9]{4}CH...
-    msg_ref = text("g:MessageHeader/g:MessageRefID")
+    msg_ref = text("g:MessageSpec/g:MessageRefID")
     check("MessageRefID format (CH[year]CH[uuid])",
           bool(msg_ref and re.match(r"^[A-Z]{2}\d{4}[A-Z]{2}.+", msg_ref)),
           msg_ref or "missing")
 
     # 5. Timestamp format
-    ts = text("g:MessageHeader/g:Timestamp")
+    ts = text("g:MessageSpec/g:Timestamp")
     check("Timestamp format (YYYY-MM-DDTHH:MM:SS)",
           bool(ts and re.match(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", ts)),
           ts or "missing")
 
     # 6. Period dates
-    start = text("g:GloBE_Body/g:FilingInfo/g:Period/g:Start")
-    end   = text("g:GloBE_Body/g:FilingInfo/g:Period/g:End")
+    start = text("g:GLOBEBody/g:FilingInfo/g:Period/g:Start")
+    end   = text("g:GLOBEBody/g:FilingInfo/g:Period/g:End")
     date_ok = bool(
         start and re.match(r"\d{4}-\d{2}-\d{2}$", start) and
         end   and re.match(r"\d{4}-\d{2}-\d{2}$", end)
@@ -416,20 +417,20 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     check("Period dates (YYYY-MM-DD)", date_ok,
           f"Start: {start}  End: {end}" if not date_ok else "")
 
-    # 7. Company name — not placeholder (FilingCE direct child, no ID wrapper)
-    name = text("g:GloBE_Body/g:FilingInfo/g:FilingCE/g:Name")
+    # 7. Company name — not placeholder
+    name = text("g:GLOBEBody/g:FilingInfo/g:FilingCE/g:Name")
     name_ok = bool(name and name != "PLACEHOLDER_COMPANY_AG")
     check("Company name (not placeholder)", name_ok,
           "Still set to PLACEHOLDER_COMPANY_AG" if not name_ok else "")
 
     # 8. Role in FilingCE (GIR401–GIR405)
-    role = text("g:GloBE_Body/g:FilingInfo/g:FilingCE/g:Role")
+    role = text("g:GLOBEBody/g:FilingInfo/g:FilingCE/g:Role")
     check("FilingCE Role (GIR401–GIR405)",
           bool(role and re.match(r"^GIR40[1-5]$", role)),
           role or "missing")
 
     # 9. TIN — not placeholder, has required attributes
-    tin_el = root.find("g:GloBE_Body/g:FilingInfo/g:FilingCE/g:TIN", g)
+    tin_el = root.find("g:GLOBEBody/g:FilingInfo/g:FilingCE/g:TIN", g)
     tin_val = tin_el.text.strip() if tin_el is not None and tin_el.text else None
     tin_ok = bool(tin_val and tin_val != "CHE-123456789")
     check("TIN (not placeholder)", tin_ok,
@@ -439,7 +440,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
               bool(tin_el.get("issuedBy") and tin_el.get("TypeOfTIN")))
 
     # 10. DocSpec in FilingInfo
-    fi_doc = root.find("g:GloBE_Body/g:FilingInfo/g:DocSpec", g)
+    fi_doc = root.find("g:GLOBEBody/g:FilingInfo/g:DocSpec", g)
     fi_doc_ok = (
         fi_doc is not None and
         fi_doc.find(f"{N}DocTypeIndic") is not None and
@@ -448,13 +449,13 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     check("FilingInfo DocSpec (DocTypeIndic + DocRefId)", fi_doc_ok)
 
     # 11. RecJurCode in JurisdictionSection
-    rec_jur = text("g:GloBE_Body/g:JurisdictionSection/g:RecJurCode")
+    rec_jur = text("g:GLOBEBody/g:JurisdictionSection/g:RecJurCode")
     check("JurisdictionSection RecJurCode present",
           bool(rec_jur and re.match(r"^[A-Z]{2}$", rec_jur)),
           rec_jur or "missing")
 
     # 12. DocSpec in JurisdictionSection
-    jur_doc = root.find("g:GloBE_Body/g:JurisdictionSection/g:DocSpec", g)
+    jur_doc = root.find("g:GLOBEBody/g:JurisdictionSection/g:DocSpec", g)
     jur_doc_ok = (
         jur_doc is not None and
         jur_doc.find(f"{N}DocTypeIndic") is not None and
@@ -463,13 +464,13 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     check("JurisdictionSection DocSpec (DocTypeIndic + DocRefId)", jur_doc_ok)
 
     # 8. Currency currCode
-    ccy_el = root.find("g:GloBE_Body/g:FilingInfo/g:AccountingInfo/g:Currency", g)
+    ccy_el = root.find("g:GLOBEBody/g:FilingInfo/g:AccountingInfo/g:Currency", g)
     check("Currency currCode attribute",
           bool(ccy_el is not None and ccy_el.get("currCode")))
 
     # 9. OverallComputation — required elements
-    oc = ("g:GloBE_Body/g:JurisdictionSection/g:GloBE_Tax/g:ETR"
-          "/g:ETR_Status/g:ETR_Computation/g:OverallComputation")
+    oc = ("g:GLOBEBody/g:JurisdictionSection/g:GLoBETax/g:ETR"
+          "/g:ETRStatus/g:ETRComputation/g:OverallComputation")
     oc_fields = ["FANIL", "AdjustedFANIL", "IncomeTaxExpense",
                  "ETRRate", "TopUpTaxPercentage"]
     missing_oc = [f for f in oc_fields if text(f"{oc}/g:{f}") is None]

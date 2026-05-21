@@ -41,7 +41,7 @@ CONFIG = {
 # ⚠️  Verify these URIs against the official ESTV-published XSD before filing.
 #     ESTV may publish a jurisdiction-specific namespace variant.
 GIR_NS = "urn:oecd:ties:gir:v1"
-ET.register_namespace("", GIR_NS)
+ET.register_namespace("globe", GIR_NS)
 
 N = f"{{{GIR_NS}}}"  # prefix for namespace-qualified element names
 
@@ -194,10 +194,10 @@ def build_xml(data: dict, cfg: dict) -> ET.Element:
         f"{str(uuid.uuid4()).replace('-','')[:12].upper()}"
     )
 
-    root = ET.Element(N + "GloBE_Message")
+    root = ET.Element("GLOBE_OECD")
 
-    # ── MessageHeader ─────────────────────────────────────────────────────
-    hdr = sub(root, "MessageHeader")
+    # ── MessageSpec ───────────────────────────────────────────────────────
+    hdr = sub(root, "MessageSpec")
     sub(hdr, "TransmittingCountry", cfg["jurisdiction"])
     sub(hdr, "ReceivingCountry",    cfg["jurisdiction"])
     sub(hdr, "MessageType",         "GIR")
@@ -206,8 +206,8 @@ def build_xml(data: dict, cfg: dict) -> ET.Element:
     sub(hdr, "ReportingPeriod",     cfg["period_end"])
     sub(hdr, "Timestamp",           now)
 
-    # ── GloBE_Body ────────────────────────────────────────────────────────
-    body = sub(root, "GloBE_Body")
+    # ── GLOBEBody ─────────────────────────────────────────────────────────
+    body = sub(root, "GLOBEBody")
 
     # FilingInfo
     fi = sub(body, "FilingInfo")
@@ -235,10 +235,10 @@ def build_xml(data: dict, cfg: dict) -> ET.Element:
 
     # JurisdictionSection
     jur_sec    = sub(body, "JurisdictionSection")
-    globe_tax  = sub(jur_sec, "GloBE_Tax")
+    globe_tax  = sub(jur_sec, "GLoBETax")
     etr        = sub(globe_tax, "ETR")
-    etr_status = sub(etr, "ETR_Status")
-    etr_comp   = sub(etr_status, "ETR_Computation")
+    etr_status = sub(etr, "ETRStatus")
+    etr_comp   = sub(etr_status, "ETRComputation")
     oc         = sub(etr_comp, "OverallComputation")
 
     # FANIL / AdjustedFANIL

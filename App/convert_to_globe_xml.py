@@ -38,10 +38,10 @@ CONFIG = {
 
 
 # ─── XML NAMESPACES ───────────────────────────────────────────────────────────
-# ⚠️  Verify these URIs against the official ESTV-published XSD before filing.
-#     ESTV may publish a jurisdiction-specific namespace variant.
 GIR_NS = "urn:oecd:ties:gir:v1"
+XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 ET.register_namespace("globe", GIR_NS)
+ET.register_namespace("xsi", XSI_NS)
 
 N = f"{{{GIR_NS}}}"  # prefix for namespace-qualified element names
 
@@ -194,7 +194,10 @@ def build_xml(data: dict, cfg: dict) -> ET.Element:
         f"{str(uuid.uuid4()).replace('-','')[:12].upper()}"
     )
 
-    root = ET.Element("GLOBE_OECD")
+    root = ET.Element("GLOBE_OECD", {
+        "version": "1.0",
+        "{" + XSI_NS + "}noNamespaceSchemaLocation": "GlobeXML_v1.0.xsd",
+    })
 
     # ── MessageSpec ───────────────────────────────────────────────────────
     hdr = sub(root, "MessageSpec")

@@ -31,6 +31,8 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
+VERSION = "1.1.0"
+
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
 GIR_NS = "urn:oecd:ties:gir:v1"
@@ -767,7 +769,10 @@ hdr_left, hdr_right = st.columns([5, 1])
 with hdr_left:
     st.markdown(
         f"""<div style='display:flex; align-items:center; gap:24px; padding:12px 0 8px 0;'>
-            <div>{scaled_svg}</div>
+            <div style='display:flex; flex-direction:column; align-items:flex-start;'>
+                <div>{scaled_svg}</div>
+                <span style='font-size:0.68rem; color:#6a7681; letter-spacing:0.03em; margin-top:3px;'>v{VERSION}</span>
+            </div>
             <h1 style='margin:0; color:#313c45; font-size:1.4rem; font-weight:700;
                 font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;'>
                 GloBE Information Return (GIR)

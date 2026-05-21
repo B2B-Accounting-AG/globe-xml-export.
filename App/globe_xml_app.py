@@ -22,6 +22,7 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.x509 import load_pem_x509_certificate
 
+import base64
 from PIL import Image
 import streamlit as st
 
@@ -604,6 +605,7 @@ T: dict[str, dict[str, str]] = {
                             "DE": "TIN ausgestellt von muss genau 2 Grossbuchstaben sein (z.B. CH)"},
     "err_rec_jur":         {"EN": "Partner country (RecJurCode) must be exactly 2 uppercase letters (e.g. DE)",
                             "DE": "Partnerstaat (RecJurCode) muss genau 2 Grossbuchstaben sein (z.B. DE)"},
+    "in_coop":             {"EN": "in cooperation with",             "DE": "in Zusammenarbeit mit"},
     "summary_label":       {"EN": "Plain Language Summary",            "DE": "Verständliche Zusammenfassung"},
     "sum_filing":          {"EN": "Filing Information",               "DE": "Einreichungsangaben"},
     "sum_company":         {"EN": "Company",                          "DE": "Unternehmen"},
@@ -648,7 +650,17 @@ T: dict[str, dict[str, str]] = {
 # ─── STREAMLIT UI ────────────────────────────────────────────────────────────
 
 MME_LOGO_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mme_logo.svg")
-ESTV_PEM_PATH  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "estv-publickey.pem")
+ESTV_PEM_PATH   = os.path.join(os.path.dirname(os.path.abspath(__file__)), "estv-publickey.pem")
+MUTARA_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mutara_logo.png")
+
+def _load_mutara_logo_b64() -> str | None:
+    try:
+        with open(MUTARA_LOGO_PATH, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except OSError:
+        return None
+
+_MUTARA_LOGO_B64 = _load_mutara_logo_b64()
 
 def _load_estv_pem() -> bytes | None:
     try:
@@ -774,6 +786,16 @@ with hdr_right:
     if selected != lang:
         st.session_state["lang"] = selected
         st.rerun()
+
+if _MUTARA_LOGO_B64:
+    st.markdown(
+        f"""<div style='display:flex; align-items:center; gap:10px; padding:6px 0 10px 0;'>
+            <span style='font-size:0.78rem; color:#6a7681;'>{T["in_coop"][lang]}</span>
+            <img src='data:image/png;base64,{_MUTARA_LOGO_B64}'
+                 style='height:18px; width:auto; opacity:0.85;'>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 st.divider()
 

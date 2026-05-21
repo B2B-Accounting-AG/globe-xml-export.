@@ -552,7 +552,7 @@ with col_title:
     st.markdown(
         "<h1 style='margin-top:18px; color:#313c45; font-size:1.4rem; font-weight:700;"
         "font-family:\"Helvetica Neue\",Helvetica,Arial,sans-serif;'>"
-        "GloBE Information Return<br>"
+        "GloBE Information Return (GIR)<br>"
         "<span style='font-size:0.95rem; color:#6a7681; font-weight:400;'>"
         "Swiss QDMTT 2024 &nbsp;·&nbsp; OECD GIR XML Schema (January 2025)"
         "</span></h1>",

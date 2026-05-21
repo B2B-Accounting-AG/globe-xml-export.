@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.4.2"
+VERSION = "1.5.0"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -68,54 +68,90 @@ COVERED_TAX_ADJUSTMENTS: dict[int, str] = {
 }
 
 GIR_INCOME_LABELS: dict[str, str] = {
-    "GIR2001": "Excluded Dividends",
-    "GIR2002": "Excluded Equity Gain or Loss",
-    "GIR2003": "Included Revaluation Method Gain or Loss",
-    "GIR2004": "Excluded Gain or Loss on Disposal of Assets",
-    "GIR2005": "Excluded Asymmetric Foreign Currency Gains or Losses",
-    "GIR2006": "Excluded Policy Disallowed Expenses",
-    "GIR2007": "Excluded Fines and Penalties",
-    "GIR2008": "Excluded Prior Period Errors and Changes in Accounting Principles",
-    "GIR2009": "Accrual to Cash Basis Adjustments",
-    "GIR2010": "Excluded Stock-based Compensation",
-    "GIR2011": "Excluded Arm's Length Adjustment",
-    "GIR2012": "Included Qualified Refundable Tax Credits",
-    "GIR2013": "Excluded Non-Qualified Refundable Tax Credits",
-    "GIR2014": "Excluded Equity Method Profit or Loss",
-    "GIR2015": "Excluded Gains or Losses on Qualifying Intra-group Asset Transfers",
-    "GIR2016": "Asymmetric Gains or Losses from Qualified Group Financing Arrangements",
-    "GIR2017": "Excluded Amounts Attributable to Excluded Entities",
-    "GIR2018": "Included Net Tax Expense",
-    "GIR2019": "Excluded Insurance Company Policyholder Income",
-    "GIR2020": "Flow-through Entity Adjustments",
-    "GIR2021": "International Shipping Income Exclusion",
-    "GIR2022": "Excluded Qualified Refundable Tax Credits for Marketable Transferable Tax Credits",
-    "GIR2023": "Other Adjustments (Increasing)",
-    "GIR2024": "Other Adjustments (Decreasing)",
-    "GIR2025": "Qualified Domestic Minimum Top-up Tax Deduction",
-    "GIR2026": "Substance Based Income Exclusion",
+    "GIR2001": "Net Taxes Expense (Art. 3.2.1a)",
+    "GIR2002": "Excluded Dividends (Art. 3.2.1b)",
+    "GIR2003": "Excluded Equity Gain or Loss (Art. 3.2.1c)",
+    "GIR2004": "Included Revaluation Method Gain or Loss (Art. 3.2.1d)",
+    "GIR2005": "Gain/Loss on Disposal of Assets excluded under Art. 6.3 (Art. 3.2.1e)",
+    "GIR2006": "Asymmetric Foreign Currency Gains or Losses (Art. 3.2.1f)",
+    "GIR2007": "Policy Disallowed Expenses (Art. 3.2.1g)",
+    "GIR2008": "Prior Period Errors (Art. 3.2.1h)",
+    "GIR2009": "Changes in Accounting Principles (Art. 3.2.1h)",
+    "GIR2010": "Accrued Pension Expense (Art. 3.2.1i)",
+    "GIR2011": "Debt Releases (Art. 3.2.1)",
+    "GIR2012": "Stock-based Compensation (Art. 3.2.2)",
+    "GIR2013": "Arm's Length Adjustments (Art. 3.2.3)",
+    "GIR2014": "QRTC / Marketable Transferable Tax Credit (Art. 3.2.4)",
+    "GIR2015": "Election for Gains/Losses – Realisation Principle (Art. 3.2.5)",
+    "GIR2016": "Election for Adjusted Asset Gain (Art. 3.2.6)",
+    "GIR2017": "Intragroup Financing Arrangement Expense (Art. 3.2.7)",
+    "GIR2018": "Election for Intragroup Transactions – Same Jurisdiction (Art. 3.2.8)",
+    "GIR2019": "Insurance Company Taxes Charged to Policyholders (Art. 3.2.9)",
+    "GIR2020": "AT1/RT1 Capital Distribution Adjustments (Art. 3.2.10)",
+    "GIR2021": "CE Joining/Leaving MNE Group (Art. 3.2.11 & 6.2)",
+    "GIR2022": "Reduction of GloBE Income – UPE Flow-through Entity (Art. 3.2.11 & 7.1)",
+    "GIR2023": "Reduction of GloBE Income – UPE Deductible Dividend Regime (Art. 3.2.11 & 7.2)",
+    "GIR2024": "Taxable Distribution Method Election (Art. 3.2.11 & 7.6)",
+    "GIR2025": "International Shipping Income (Art. 3.3)",
+    "GIR2026": "Transactions between Constituent Entities (Art. 9.1.3)",
 }
 
 GIR_TAX_LABELS: dict[str, str] = {
-    "GIR2701": "Current Tax Expense",
-    "GIR2703": "Deferred Tax Adjustments",
-    "GIR2704": "Uncollected Prior Period Taxes",
-    "GIR2705": "Tax on Distributions",
-    "GIR2706": "Non-allowable Taxes",
-    "GIR2707": "Excluded Dividends Taxes",
-    "GIR2708": "Additional Covered Tax for Prior Years",
-    "GIR2709": "Qualified Domestic Minimum Top-up Tax",
-    "GIR2710": "Reduced Taxes Due to Deferred Tax Liability",
-    "GIR2711": "CFC Tax Allocations",
-    "GIR2712": "Blended CFC Tax Allocation Adjustments",
-    "GIR2713": "Qualified Imputation Tax",
-    "GIR2714": "Uncertainty in Taxes",
-    "GIR2715": "Post-filing Adjustments",
-    "GIR2716": "Transitional UTPR Safe Harbour Tax",
-    "GIR2717": "Qualified Domestic Minimum Top-up Tax for STTR Purposes",
-    "GIR2718": "Other Adjustments",
-    "GIR2719": "Excess Negative Tax Amount Generated",
-    "GIR2720": "Excess Negative Tax Amount Utilized",
+    "GIR2701": "Covered Tax Accrued as Expense (Art. 4.1.2a)",
+    "GIR2702": "GloBE Loss Deferred Tax Asset (Art. 4.1.2b & 4.5.3)",
+    "GIR2703": "Covered Taxes – Uncertain Tax Position Prior Year (Art. 4.1.2c)",
+    "GIR2704": "QRTC / Marketable Transferable Tax Credit – Current Tax Reduction (Art. 4.1.2d)",
+    "GIR2705": "Qualified Flow-through Tax Benefits (Art. 3.2.1c)",
+    "GIR2706": "Current Tax on Excluded Income (Art. 4.1.3a)",
+    "GIR2707": "Non-QRTC / Other Tax Credits (Art. 4.1.3b)",
+    "GIR2708": "Covered Taxes Refunded or Credited (Art. 4.1.3c)",
+    "GIR2709": "Current Tax – Uncertain Tax Position (Art. 4.1.3d)",
+    "GIR2710": "Current Tax Not Expected Paid within 3 Years (Art. 4.1.3e)",
+    "GIR2711": "Post-filing Adjustments (Art. 4.6.1)",
+    "GIR2712": "Covered Taxes – Net Asset Gain/Loss (Art. 3.2.6)",
+    "GIR2713": "Reduction – UPE Flow-through Entity (Art. 7.1)",
+    "GIR2714": "Covered Taxes – UPE Deductible Dividend Regime (Art. 7.2.2)",
+    "GIR2715": "Deemed Distribution Tax (Art. 7.3)",
+    "GIR2716": "Taxable Distribution Method Election (Art. 7.6b)",
+    "GIR2717": "Total Deferred Tax Adjustment Amount (Art. 4.4.1b)",
+    "GIR2718": "Covered Taxes in Equity / OCI (Art. 4.1.1c)",
+    "GIR2719": "Excess Negative Tax Expense Carry Forward Generated (Art. 4.1.5 & 5.2.1)",
+    "GIR2720": "Excess Negative Tax Expense Carry Forward Utilized (Art. 4.1.5 & 5.2.1)",
+}
+
+UPE_RULES_OPTIONS = ["GIR201", "GIR202", "GIR203", "GIR204", "GIR205"]
+UPE_RULES_LABELS: dict[str, str] = {
+    "GIR201": "GIR201 — QIIR (other jurisdictions only)",
+    "GIR202": "GIR202 — QIIR (other + parent jurisdiction)",
+    "GIR203": "GIR203 — QUTPR",
+    "GIR204": "GIR204 — QDMTT",
+    "GIR205": "GIR205 — Not applicable",
+}
+
+UPE_GLOBE_STATUS_OPTIONS = [
+    "GIR301", "GIR302", "GIR303", "GIR304", "GIR305", "GIR306",
+    "GIR307", "GIR308", "GIR309", "GIR310", "GIR311", "GIR312",
+    "GIR313", "GIR314", "GIR315", "GIR316", "GIR317", "GIR318",
+]
+UPE_GLOBE_STATUS_LABELS: dict[str, str] = {
+    "GIR301": "GIR301 — Constituent Entity",
+    "GIR302": "GIR302 — Flow-Through Entity – Tax Transparent",
+    "GIR303": "GIR303 — Flow-Through Entity – Reverse Hybrid",
+    "GIR304": "GIR304 — Hybrid Entity",
+    "GIR305": "GIR305 — Permanent Establishment",
+    "GIR306": "GIR306 — Main Entity",
+    "GIR307": "GIR307 — Minority-Owned Parent Entity",
+    "GIR308": "GIR308 — Minority-Owned Subsidiary",
+    "GIR309": "GIR309 — Minority-Owned Constituent Entity",
+    "GIR310": "GIR310 — Investment Entity",
+    "GIR311": "GIR311 — Insurance Investment Entity",
+    "GIR312": "GIR312 — Securitisation Entity",
+    "GIR313": "GIR313 — JV",
+    "GIR314": "GIR314 — JV Subsidiary",
+    "GIR315": "GIR315 — Non-Material Constituent Entity",
+    "GIR316": "GIR316 — Excluded Entity",
+    "GIR317": "GIR317 — Parent Entity (Art. 10.3.5)",
+    "GIR318": "GIR318 — Non-group Member",
 }
 
 ROW_EXCESS_NEG_GENERATED = 95
@@ -288,6 +324,23 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     ET.SubElement(fi_doc, S + "DocTypeIndic").text = doc_type_indic
     ET.SubElement(fi_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
+    gen_sec = sub(body, "GeneralSection")
+    sub(gen_sec, "RecJurCode", cfg["rec_jur_code"])
+    corp = sub(gen_sec, "CorporateStructure")
+    upe_el = sub(corp, "UPE")
+    other_upe = sub(upe_el, "OtherUPE")
+    id_el = sub(other_upe, "ID")
+    sub(id_el, "Name", cfg["company_name"])
+    sub(id_el, "ResCountryCode", cfg["jurisdiction"])
+    upe_tin = ET.SubElement(id_el, N + "TIN",
+                            {"issuedBy": cfg["tin_issued_by"], "TypeOfTIN": cfg["tin_type"]})
+    upe_tin.text = cfg["tin_value"]
+    sub(id_el, "Rules", cfg["upe_rules"])
+    sub(id_el, "GlobeStatus", cfg["upe_globe_status"])
+    gen_doc = sub(gen_sec, "DocSpec")
+    ET.SubElement(gen_doc, S + "DocTypeIndic").text = doc_type_indic
+    ET.SubElement(gen_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
+
     jur_sec = sub(body, "JurisdictionSection")
     sub(jur_sec, "RecJurCode",  cfg["rec_jur_code"])
     sub(jur_sec, "Jurisdiction", cfg["rec_jur_code"])
@@ -304,9 +357,10 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     ngi = sub(oc, "NetGlobeIncome")
     sub(ngi, "Total", data["net_globe_income"])
     for gir_code, amount in data["income_adj"]:
-        adj = sub(ngi, "Adjustments")
-        sub(adj, "Amount",         amount)
-        sub(adj, "AdjustmentItem", gir_code)
+        if amount != 0:
+            adj = sub(ngi, "Adjustments")
+            sub(adj, "Amount",         amount)
+            sub(adj, "AdjustmentItem", gir_code)
 
     sub(oc, "IncomeTaxExpense",    data["aggregate_curr_tax"])
     sub(oc, "ETRRate",             fmt_etr(data["adjusted_cov_tax"], data["net_globe_income"]))
@@ -316,9 +370,10 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(act, "Total",                data["adjusted_cov_tax"])
     sub(act, "AggregrateCurrentTax", data["aggregate_curr_tax"])
     for gir_code, amount in data["cov_tax_adj"]:
-        adj = sub(act, "Adjustments")
-        sub(adj, "Amount",         amount)
-        sub(adj, "AdjustmentItem", gir_code)
+        if amount != 0:
+            adj = sub(act, "Adjustments")
+            sub(adj, "Amount",         amount)
+            sub(adj, "AdjustmentItem", gir_code)
 
     # ExcessProfits = NetGlobeIncome - SubstanceExclusion (SBIE=0 for CH QDMTT)
     sub(oc, "ExcessProfits", data["net_globe_income"])
@@ -523,21 +578,30 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     check("TopUpTaxPercentage format (0.0000)",
           bool(tup and re.match(r"^\d\.\d{4}$", tup)), tup or "missing")
 
-    # All 26 NetGlobeIncome adjustment items
+    # NetGlobeIncome — only valid GIR20xx codes (zero-value items are omitted)
+    valid_ngi = {f"GIR{2000+i}" for i in range(1, 27)}
     ngi_codes = {el.text for el in findall(
         f"{oc}/NetGlobeIncome/Adjustments/AdjustmentItem") if el.text}
-    expected_ngi = {f"GIR{2000+i}" for i in range(1, 27)}
-    missing_ngi  = expected_ngi - ngi_codes
-    check("NetGlobeIncome — all 26 adjustments (GIR2001–GIR2026)", not missing_ngi,
-          f"Missing: {', '.join(sorted(missing_ngi))}" if missing_ngi else "")
+    invalid_ngi = ngi_codes - valid_ngi
+    check("NetGlobeIncome — adjustment codes valid (GIR2001–GIR2026)", not invalid_ngi,
+          f"Invalid: {', '.join(sorted(invalid_ngi))}" if invalid_ngi else "")
 
-    # All 19 AdjustedCoveredTax adjustment items (GIR2701–GIR2720, no GIR2702)
+    # AdjustedCoveredTax — only valid GIR27xx codes
+    valid_act = {f"GIR27{i:02d}" for i in range(1, 21)}
     act_codes = {el.text for el in findall(
         f"{oc}/AdjustedCoveredTax/Adjustments/AdjustmentItem") if el.text}
-    expected_act = {f"GIR27{i:02d}" for i in range(1, 21) if i != 2}
-    missing_act  = expected_act - act_codes
-    check("AdjustedCoveredTax — all 19 adjustments (GIR2701–GIR2720)", not missing_act,
-          f"Missing: {', '.join(sorted(missing_act))}" if missing_act else "")
+    invalid_act = act_codes - valid_act
+    check("AdjustedCoveredTax — adjustment codes valid (GIR2701–GIR2720)", not invalid_act,
+          f"Invalid: {', '.join(sorted(invalid_act))}" if invalid_act else "")
+
+    # GeneralSection present with CorporateStructure
+    gen_sec = root.find(_nsp("GLOBEBody/GeneralSection"))
+    gen_ok = (
+        gen_sec is not None and
+        gen_sec.find(_nsp("CorporateStructure")) is not None and
+        gen_sec.find(_nsp("CorporateStructure/UPE")) is not None
+    )
+    check("GeneralSection present (CorporateStructure / UPE)", gen_ok)
 
     # All amounts are integers
     non_int = [el.text for el in root.findall(".//" + N + "Amount")
@@ -642,6 +706,12 @@ T: dict[str, dict[str, str]] = {
                             "DE": "TIN ausgestellt von muss genau 2 Grossbuchstaben sein (z.B. CH)"},
     "err_rec_jur":         {"EN": "Partner country (RecJurCode) must be exactly 2 uppercase letters (e.g. DE)",
                             "DE": "Partnerstaat (RecJurCode) muss genau 2 Grossbuchstaben sein (z.B. DE)"},
+    "upe_rules_label":     {"EN": "UPE GloBE Rules",                  "DE": "UPE GloBE-Regeln"},
+    "upe_rules_help":      {"EN": "GloBE rules applicable to the Ultimate Parent Entity (GIR201–GIR205). Use GIR204 for QDMTT filers.",
+                            "DE": "Anwendbare GloBE-Regeln für die oberste Muttergesellschaft (GIR201–GIR205). GIR204 für QDMTT-Einreicher."},
+    "upe_globe_status_label": {"EN": "UPE GloBE Status",            "DE": "UPE GloBE-Status"},
+    "upe_globe_status_help":  {"EN": "GloBE entity classification of the Ultimate Parent Entity (GIR301–GIR318). GIR301 for standard Constituent Entity.",
+                               "DE": "GloBE-Entitätsstatus der obersten Muttergesellschaft (GIR301–GIR318). GIR301 für normale Untereinheit."},
     "in_coop":             {"EN": "in cooperation with",             "DE": "in Zusammenarbeit mit"},
     "summary_label":       {"EN": "Plain Language Summary",            "DE": "Verständliche Zusammenfassung"},
     "sum_filing":          {"EN": "Filing Information",               "DE": "Einreichungsangaben"},
@@ -908,6 +978,20 @@ with st.expander(T["advanced"][lang]):
         }[x],
         help=T["cfs_upe_help"][lang],
     )
+    upe_rules = st.selectbox(
+        T["upe_rules_label"][lang],
+        UPE_RULES_OPTIONS,
+        index=UPE_RULES_OPTIONS.index("GIR204"),
+        format_func=lambda x: UPE_RULES_LABELS[x],
+        help=T["upe_rules_help"][lang],
+    )
+    upe_globe_status = st.selectbox(
+        T["upe_globe_status_label"][lang],
+        UPE_GLOBE_STATUS_OPTIONS,
+        index=UPE_GLOBE_STATUS_OPTIONS.index("GIR301"),
+        format_func=lambda x: UPE_GLOBE_STATUS_LABELS[x],
+        help=T["upe_globe_status_help"][lang],
+    )
     submission_mode = st.radio(
         T["submission_mode"][lang],
         ["production", "test"],
@@ -953,18 +1037,20 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                 data = read_excel(file_bytes)
 
                 cfg = {
-                    "company_name":   company_name,
-                    "tin_value":      tin_value,
-                    "tin_issued_by":  tin_issued_by,
-                    "tin_type":       tin_type,
-                    "reporting_role": reporting_role,
-                    "rec_jur_code":   rec_jur_code.strip().upper(),
-                    "currency":       currency,
-                    "jurisdiction":   jurisdiction,
-                    "fas":            fas,
-                    "cfs_of_upe":     cfs_of_upe,
-                    "period_start":   period_start,
-                    "period_end":     period_end,
+                    "company_name":    company_name,
+                    "tin_value":       tin_value,
+                    "tin_issued_by":   tin_issued_by,
+                    "tin_type":        tin_type,
+                    "reporting_role":  reporting_role,
+                    "rec_jur_code":    rec_jur_code.strip().upper(),
+                    "currency":        currency,
+                    "jurisdiction":    jurisdiction,
+                    "fas":             fas,
+                    "cfs_of_upe":      cfs_of_upe,
+                    "period_start":    period_start,
+                    "period_end":      period_end,
+                    "upe_rules":       upe_rules,
+                    "upe_globe_status": upe_globe_status,
                 }
 
                 input_errors = validate_inputs(cfg)

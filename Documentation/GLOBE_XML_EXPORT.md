@@ -363,10 +363,10 @@ ESTV provides a dedicated test environment at `https://eportal-a.admin.ch/`.
 | Code | Meaning | Status |
 |---|---|---|
 | 50007 | Schema validation failed — root element or namespace not recognised | Fixed in v1.4.1 |
-| 50008 | `DocTypeIndic` outside accepted range for the portal — OECD10 on production, or OECD1/mixed on CTS | See Known Issues |
-| 50009 | Production file contains test DocTypeIndic (OECD10–13) or filename starts with "Test" | Avoid by using correct mode |
-| 60013 | `OECD0` used in non-FilingInfo `DocTypeIndic` (ESTV also maps OECD10 → OECD0 for this check) | See Known Issues |
-| 60014 | Unknown/invalid `DocRefId` for resend option (OECD0) — triggered when ESTV maps OECD10 → OECD0 | See Known Issues |
+| 50008 | `DocTypeIndic` outside accepted range — OECD10 on production portal, or OECD1/mixed on CTS | Triggered by v1.5.1 and v1.5.2 (see Known Issues) |
+| 50009 | Production file contains test DocTypeIndic (OECD10–13) or filename starts with "Test" | Avoid by using correct submission mode |
+| 60013 | ESTV CTS maps OECD10 → OECD0; fires on `GeneralSection` and `JurisdictionSection` DocSpec | Open ESTV bug — see Known Issues |
+| 60014 | ESTV CTS maps OECD10 → OECD0; fires on all three DocSpecs (FilingInfo, GeneralSection, JurisdictionSection) | Open ESTV bug — see Known Issues |
 | 60022 | `GIR401` FilingCE TIN does not match any TIN in UPE element | Fixed in v1.5.0 (GeneralSection added) |
 | 70060 | `GIR2025` present but `IntShippingIncome` element missing | Fixed in v1.5.0 (zero-value filter) |
 | 98201 | GeneralSection missing or does not contain all RecJurCodes | Fixed in v1.5.0 (GeneralSection added) |
@@ -377,24 +377,36 @@ ESTV provides a dedicated test environment at `https://eportal-a.admin.ch/`.
 
 ### Errors 60013 / 60014 — ESTV CTS validator maps OECD10 to OECD0
 
-**Status:** Under investigation. Pending clarification from ESTV (`info-gir@estv.admin.ch`).
+**Status:** Open ESTV bug. Next step: email `info-gir@estv.admin.ch` to report.
 
 When submitting to the CTS test portal (`eportal-a.admin.ch`) with `OECD10` in all `DocTypeIndic` positions (correct test-mode behaviour per OECD spec), the ESTV business-rule validator fires:
 
-- **60013** on `GeneralSection` and `JurisdictionSection` — "OECD0 is only a valid input for the DocTypeIndic of the FilingInfo"
-- **60014** on `FilingInfo`, `GeneralSection`, and `JurisdictionSection` — "Unknown or invalid DocRefID for the Resend option (OECD0)"
+- **60013** on `GeneralSection/DocSpec/DocTypeIndic` and `JurisdictionSection/DocSpec/DocTypeIndic`  
+  → "OECD0 is only a valid input for the DocTypeIndic of the FilingInfo and should not be used for any other element."
+- **60014** on all three `DocSpec` blocks (FilingInfo, GeneralSection, JurisdictionSection)  
+  → "An unknown or invalid DocRefID was specified for the Resend option (OECD0)"
 
-The error messages reference OECD0, but the actual XML contains OECD10. This indicates the ESTV CTS validator incorrectly maps OECD10 → OECD0 for business-rule purposes. Per the OECD GIR spec, OECD10 is the test-mode equivalent of OECD1 (new data) and should be valid in all `DocSpec` positions.
+The error messages reference OECD0, but the submitted XML contains OECD10. The ESTV CTS validator incorrectly maps OECD10 → OECD0 for business-rule evaluation. Per the OECD GIR spec, OECD10 is the test-mode equivalent of OECD1 (new data) and is valid in all `DocSpec` positions.
 
-**Workarounds attempted and their results:**
+**Confirmed test results (PureFert Holding AG, 2026-05-21):**
 
-| DocTypeIndic used | Portal result | Errors |
-|---|---|---|
-| OECD10 everywhere (v1.5.0) | "New" — portal accepts | 60013, 60014 (validator bug) |
-| OECD1 everywhere (v1.5.1) | "Unknown" — 50008 | Portal rejects |
-| OECD10 FilingInfo + OECD1 sections (v1.5.2) | "Unknown" — 50008 | Portal rejects |
+| Version | DocTypeIndic used | Portal Type | Reporting Period | ValidationResult | Errors |
+|---|---|---|---|---|---|
+| v1.5.0 | OECD10 everywhere | **New** ✓ | **31.12.2024** ✓ | Rejected | 60013 (GeneralSection, JurisdictionSection), 60014 (all 3 DocSpecs) |
+| v1.5.1 | OECD1 everywhere | Unknown | — | Rejected | 50008 |
+| v1.5.2 | OECD10 FilingInfo + OECD1 sections | Unknown | — | Rejected | 50008 |
 
-**Current state:** Reverted to v1.5.0 (OECD10 everywhere). This is the only configuration that passes the CTS portal-level check. The 60013/60014 errors are believed to be an ESTV CTS bug and need to be reported.
+**Current state:** v1.5.0 (OECD10 everywhere) is the only configuration where the portal correctly classifies the submission as Type "New" with the correct Reporting Period. The 60013/60014 errors are an ESTV CTS bug — the XML is structurally correct and passes all local XSD checks.
+
+**Exact error paths from status message `CH2024CH84dde055-5125-49c2-a8a4-de9d3a5f9fe5` (2026-05-21T19:49:42):**
+
+```
+60013: /GLOBE_OECD[1]/GLOBEBody[1]/GeneralSection[1]/DocSpec[1]/DocTypeIndic[1]
+60013: /GLOBE_OECD[1]/GLOBEBody[1]/JurisdictionSection[1]/DocSpec[1]/DocTypeIndic[1]
+60014: /GLOBE_OECD[1]/GLOBEBody[1]/FilingInfo[1]/DocSpec[1]
+60014: /GLOBE_OECD[1]/GLOBEBody[1]/GeneralSection[1]/DocSpec[1]
+60014: /GLOBE_OECD[1]/GLOBEBody[1]/JurisdictionSection[1]/DocSpec[1]
+```
 
 ---
 

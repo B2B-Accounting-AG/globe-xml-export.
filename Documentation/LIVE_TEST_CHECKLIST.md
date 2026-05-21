@@ -86,6 +86,14 @@ Upload the QDMTT calculation file.
 
 The ESTV CTS validator incorrectly treats `OECD10` as `OECD0` (resend) when checking business rules. This causes false 60013/60014 errors even though the XML is correct per the OECD spec.
 
-- **Only OECD10 everywhere** passes the CTS portal-level check (shows "New" type)
-- Using OECD1 or mixed values → 50008 portal rejection
-- This appears to be an ESTV CTS bug — report to `info-gir@estv.admin.ch`
+**Confirmed results (PureFert Holding AG, 2026-05-21):**
+
+| Version | DocTypeIndic | Portal Type | Reporting Period | Result |
+|---|---|---|---|---|
+| v1.5.0 | OECD10 everywhere | **New** ✓ | **31.12.2024** ✓ | Rejected — 60013/60014 (bug) |
+| v1.5.1 | OECD1 everywhere | Unknown | — | Rejected — 50008 |
+| v1.5.2 | OECD10 FilingInfo + OECD1 sections | Unknown | — | Rejected — 50008 |
+
+- **v1.5.0 (OECD10 everywhere) is the correct approach** — portal properly classifies as "New" with correct Reporting Period
+- The 60013/60014 errors are an ESTV CTS bug — report to `info-gir@estv.admin.ch`
+- Error paths: `GeneralSection/DocSpec/DocTypeIndic`, `JurisdictionSection/DocSpec/DocTypeIndic`, and all three `DocSpec` blocks for 60014

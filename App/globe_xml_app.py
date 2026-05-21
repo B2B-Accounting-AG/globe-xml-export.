@@ -242,7 +242,7 @@ def read_excel(file_bytes: bytes) -> dict:
     return data
 
 
-def build_xml(data: dict, cfg: dict) -> str:
+def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     year = cfg["period_end"][:4]
     msg_ref = f"{cfg['jurisdiction']}{year}{cfg['jurisdiction']}{str(uuid.uuid4())}"
@@ -282,8 +282,10 @@ def build_xml(data: dict, cfg: dict) -> str:
     sub(period, "End",   cfg["period_end"])
     sub(fi, "NameMNE", cfg["company_name"])
 
+    doc_type_indic = "OECD10" if test_mode else "OECD1"
+
     fi_doc = sub(fi, "DocSpec")
-    ET.SubElement(fi_doc, S + "DocTypeIndic").text = "OECD1"
+    ET.SubElement(fi_doc, S + "DocTypeIndic").text = doc_type_indic
     ET.SubElement(fi_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
     jur_sec = sub(body, "JurisdictionSection")
@@ -337,7 +339,7 @@ def build_xml(data: dict, cfg: dict) -> str:
     sub(ente, "Remaining",        0)
 
     jur_doc = sub(jur_sec, "DocSpec")
-    ET.SubElement(jur_doc, S + "DocTypeIndic").text = "OECD1"
+    ET.SubElement(jur_doc, S + "DocTypeIndic").text = doc_type_indic
     ET.SubElement(jur_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
     ET.indent(root, space="  ")
@@ -574,6 +576,11 @@ T: dict[str, dict[str, str]] = {
     "cfs_upe":             {"EN": "CFS of UPE",                       "DE": "CFS der UPE"},
     "cfs_upe_help":        {"EN": "Type of Consolidated Financial Statement of the Ultimate Parent Entity",
                             "DE": "Art des konsolidierten Abschlusses der obersten Muttergesellschaft"},
+    "submission_mode":     {"EN": "Submission mode",                   "DE": "Einreichungsmodus"},
+    "mode_production":     {"EN": "Production (OECD1)",                "DE": "Produktion (OECD1)"},
+    "mode_test":           {"EN": "Test / CTS (OECD10)",               "DE": "Test / CTS (OECD10)"},
+    "mode_help":           {"EN": "Use Test/CTS for the acceptance portal (eportal-a.admin.ch). Use Production for the live portal (eportal.admin.ch).",
+                            "DE": "Test/CTS für das Abnahmeportal (eportal-a.admin.ch), Produktion für das Live-Portal (eportal.admin.ch)."},
     "gir401":              {"EN": "GIR401 — Ultimate Parent Entity (UPE)",    "DE": "GIR401 — Oberste Muttergesellschaft (UPE)"},
     "gir402":              {"EN": "GIR402 — Designated Filing Entity (DFE)",  "DE": "GIR402 — Benannte Einreichungsstelle (DFE)"},
     "gir404":              {"EN": "GIR404 — Constituent Entity (CE)",         "DE": "GIR404 — Untereinheit (CE)"},
@@ -901,6 +908,14 @@ with st.expander(T["advanced"][lang]):
         }[x],
         help=T["cfs_upe_help"][lang],
     )
+    submission_mode = st.radio(
+        T["submission_mode"][lang],
+        ["production", "test"],
+        format_func=lambda x: T["mode_production"][lang] if x == "production" else T["mode_test"][lang],
+        index=1,
+        help=T["mode_help"][lang],
+        horizontal=True,
+    )
 
 # ── Step 3: Export ────────────────────────────────────────────────────────────
 st.header(T["step3"][lang])
@@ -958,7 +973,7 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                         st.error(err)
                     st.stop()
 
-                xml_str = build_xml(data, cfg)
+                xml_str = build_xml(data, cfg, test_mode=(submission_mode == "test"))
                 st.session_state["xml_str"]      = xml_str
                 st.session_state["xml_filename"] = f"gir_{period_end[:4]}_{jurisdiction}.xml"
 

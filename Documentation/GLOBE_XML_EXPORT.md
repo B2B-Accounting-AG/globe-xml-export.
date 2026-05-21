@@ -247,7 +247,7 @@ The tool reads from sheet **`QDMTT 2024`** only.
 |---|---|
 | `ETRRate` | `AdjustedCoveredTax ÷ NetGlobeIncome` (clamped 0–1, 4 decimal places) |
 | `TopUpTaxPercentage` | Fixed `0.0000` (no top-up tax for QDMTT-qualified entities) |
-| `MessageRefID` | `{jurisdiction}2024{jurisdiction}{random 12-char hex}` |
+| `MessageRefId` | `{jurisdiction}2024{jurisdiction}{uuid}` |
 | `Timestamp` | UTC time of generation |
 
 ---
@@ -259,9 +259,9 @@ The app runs 20 checks automatically after every export:
 | # | Check |
 |---|---|
 | 1 | Well-formed XML |
-| 2 | Namespace (`urn:oecd:ties:gir:v1` declared as `xmlns:globe`) |
+| 2 | Root element (`globe:GLOBE_OECD`) present with `globe:MessageSpec` child |
 | 3 | MessageSpec — all required fields present (incl. `SendingEntityIN`) |
-| 4 | MessageRefID format (`CH[year]CH[uuid]`) |
+| 4 | `MessageRefId` format (`CH[year]CH[uuid]`) |
 | 5 | Timestamp format (`YYYY-MM-DDTHH:MM:SS`) |
 | 6 | Period dates format (`YYYY-MM-DD`) |
 | 7 | Company name — not placeholder |
@@ -284,26 +284,26 @@ The app runs 20 checks automatically after every export:
 ## Output XML Structure
 
 ```
-GLOBE_OECD (xmlns:globe="urn:oecd:ties:gir:v1")
+globe:GLOBE_OECD (xmlns:globe="urn:oecd:ties:gir:v1" version="1.0")
 ├── globe:MessageSpec
 │   ├── globe:TransmittingCountry
 │   ├── globe:ReceivingCountry
-│   ├── globe:MessageType            GIR
-│   ├── globe:MessageRefID
-│   ├── globe:MessageTypeIndic       GIR101
+│   ├── globe:MessageType          GIR
+│   ├── globe:MessageRefId
+│   ├── globe:MessageTypeIndic     GIR101
 │   ├── globe:ReportingPeriod
 │   ├── globe:Timestamp
-│   └── globe:SendingEntityIN        TIN of filing entity
+│   └── globe:SendingEntityIN      TIN of filing entity
 └── globe:GLOBEBody
     ├── globe:FilingInfo
-    │   ├── globe:FilingCE           ResCountryCode, Name, TIN, Role
-    │   ├── globe:AccountingInfo     CFSofUPE, FAS, Currency
-    │   ├── globe:Period             Start, End
+    │   ├── globe:FilingCE         ResCountryCode, Name, TIN, Role
+    │   ├── globe:AccountingInfo   CFSofUPE, FAS, Currency
+    │   ├── globe:Period           Start, End
     │   ├── globe:NameMNE
-    │   └── globe:DocSpec            DocTypeIndic, DocRefId
+    │   └── globe:DocSpec          DocTypeIndic, DocRefId
     └── globe:JurisdictionSection
-        ├── globe:RecJurCode         Partner/receiving jurisdiction
-        ├── globe:GLoBETax / globe:ETR / globe:ETRStatus / globe:ETRComputation / globe:OverallComputation
+        ├── globe:RecJurCode       Partner/receiving jurisdiction
+        ├── globe:GLoBETax / ETR / ETRStatus / ETRComputation / OverallComputation
         │   ├── globe:FANIL
         │   ├── globe:AdjustedFANIL
         │   ├── globe:NetGlobeIncome
@@ -316,7 +316,7 @@ GLOBE_OECD (xmlns:globe="urn:oecd:ties:gir:v1")
         │       ├── globe:Total
         │       ├── globe:AggregrateCurrentTax
         │       └── globe:Adjustments × 19   (GIR2701–GIR2720)
-        └── globe:DocSpec            DocTypeIndic, DocRefId
+        └── globe:DocSpec          DocTypeIndic, DocRefId
 ```
 
 ---
@@ -367,5 +367,6 @@ Tel: +41 58 466 78 76
 
 - OECD GloBE Information Return XML Schema User Guide, January 2025  
   DOI: [10.1787/c594935a-en](https://doi.org/10.1787/c594935a-en)
-- XML Namespace: `urn:oecd:ties:gir:v1`
+- Swiss ESTV Technische Wegleitung GIR (Technische-Wegleitung-GIR-de.pdf)
+- OECD XML Namespace: `urn:oecd:ties:gir:v1` — declared with prefix `globe:` on root element, consistent with the CRS schema pattern (`crs:CRS_OECD xmlns:crs="urn:oecd:ties:crs:v3"`). All elements carry the `globe:` prefix.
 - Swiss QDMTT legal basis: Art. 4 MinBestG (Mindestbesteuerungsgesetz)

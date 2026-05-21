@@ -717,7 +717,8 @@ st.markdown("""
     .stDownloadButton > button:hover { background-color: #c0272f !important; }
 
     h2 { color: #313c45 !important; border-bottom: 2px solid #e0303c; padding-bottom: 4px; }
-    [data-testid="stMetricValue"] { color: #e0303c !important; font-weight: 700; }
+    [data-testid="stMetricValue"] { color: #e0303c !important; font-weight: 700; font-size: 1rem !important; }
+    [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
     hr { border-color: #e2eaf1 !important; }
     .stCaption { color: #6a7681 !important; }
 </style>

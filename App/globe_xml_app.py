@@ -548,6 +548,24 @@ T: dict[str, dict[str, str]] = {
                             "DE": "TIN ausgestellt von muss genau 2 Grossbuchstaben sein (z.B. CH)"},
     "err_rec_jur":         {"EN": "Partner country (RecJurCode) must be exactly 2 uppercase letters (e.g. DE)",
                             "DE": "Partnerstaat (RecJurCode) muss genau 2 Grossbuchstaben sein (z.B. DE)"},
+    "disclaimer_label":    {"EN": "Disclaimer",                        "DE": "Haftungsausschluss"},
+    "disclaimer_text":     {
+        "EN": (
+            "This tool is provided for informational purposes only and does not constitute legal or tax advice. "
+            "The generated XML output should be reviewed and validated by a qualified tax professional before "
+            "submission to the ESTV. MME accepts no liability for errors, inaccuracies, or omissions in the "
+            "output, or for any consequences arising from its use. Always verify the final file against the "
+            "official ESTV XSD schema prior to submission."
+        ),
+        "DE": (
+            "Dieses Tool dient ausschliesslich zu Informationszwecken und stellt keine Rechts- oder "
+            "Steuerberatung dar. Der generierte XML-Output ist vor der Einreichung bei der ESTV von einer "
+            "qualifizierten Fachperson zu prüfen und zu validieren. MME übernimmt keine Haftung für Fehler, "
+            "Ungenauigkeiten oder Auslassungen im Output oder für Folgen, die sich aus dessen Verwendung "
+            "ergeben. Die finale Datei ist vor der Einreichung stets gegen das offizielle ESTV XSD-Schema "
+            "zu validieren."
+        ),
+    },
 }
 
 
@@ -890,6 +908,11 @@ if not xml_ready:
     st.info(T["gen_first_long"][lang])
 
 st.divider()
+with st.expander(T["disclaimer_label"][lang]):
+    st.markdown(
+        f"<p style='color:#6a7681; font-size:0.85rem;'>{T['disclaimer_text'][lang]}</p>",
+        unsafe_allow_html=True,
+    )
 st.markdown(
     "<p style='color:#6a7681; font-size:0.75rem; margin:0;'>MME Legal | Tax | Compliance</p>",
     unsafe_allow_html=True,

@@ -31,14 +31,17 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
-GIR_NS = "urn:oecd:ties:gir:v1"
+GIR_NS = "urn:oecd:ties:globe:v2"        # confirmed from GLOBEXML_v1.0.xsd targetNamespace
+STF_NS = "urn:oecd:ties:globestf:v5"    # DocSpec children (DocTypeIndic, DocRefId)
 XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 N = "{" + GIR_NS + "}"
+S = "{" + STF_NS + "}"
 ET.register_namespace("globe", GIR_NS)
+ET.register_namespace("stf", STF_NS)
 ET.register_namespace("xsi", XSI_NS)
 
 
@@ -244,11 +247,9 @@ def build_xml(data: dict, cfg: dict) -> str:
     year = cfg["period_end"][:4]
     msg_ref = f"{cfg['jurisdiction']}{year}{cfg['jurisdiction']}{str(uuid.uuid4())}"
 
-    # CRS-equivalent pattern: root element in urn:oecd:ties:gir:v1 namespace with globe: prefix,
-    # xsi:schemaLocation points to the same namespace URI + XSD filename (mirrors CRS pattern).
     root = ET.Element(N + "GLOBE_OECD", {
         "version": "1.0",
-        "{" + XSI_NS + "}schemaLocation": "urn:oecd:ties:gir:v1 GlobeXML_v1.0.xsd",
+        "{" + XSI_NS + "}schemaLocation": "urn:oecd:ties:globe:v2 GLOBEXML_v1.0.xsd",
     })
 
     hdr = sub(root, "MessageSpec")
@@ -274,7 +275,7 @@ def build_xml(data: dict, cfg: dict) -> str:
     acct = sub(fi, "AccountingInfo")
     sub(acct, "CFSofUPE", cfg["cfs_of_upe"])
     sub(acct, "FAS",      cfg["fas"])
-    sub(acct, "Currency", currCode=cfg["currency"])
+    sub(acct, "Currency", cfg["currency"])
 
     period = sub(fi, "Period")
     sub(period, "Start", cfg["period_start"])
@@ -282,11 +283,12 @@ def build_xml(data: dict, cfg: dict) -> str:
     sub(fi, "NameMNE", cfg["company_name"])
 
     fi_doc = sub(fi, "DocSpec")
-    sub(fi_doc, "DocTypeIndic", "OECD1")
-    sub(fi_doc, "DocRefId",     f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}")
+    ET.SubElement(fi_doc, S + "DocTypeIndic").text = "OECD1"
+    ET.SubElement(fi_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
     jur_sec = sub(body, "JurisdictionSection")
-    sub(jur_sec, "RecJurCode", cfg["rec_jur_code"])
+    sub(jur_sec, "RecJurCode",  cfg["rec_jur_code"])
+    sub(jur_sec, "Jurisdiction", cfg["rec_jur_code"])
 
     globe_tax  = sub(jur_sec, "GLoBETax")
     etr        = sub(globe_tax, "ETR")
@@ -316,9 +318,27 @@ def build_xml(data: dict, cfg: dict) -> str:
         sub(adj, "Amount",         amount)
         sub(adj, "AdjustmentItem", gir_code)
 
+    # ExcessProfits = NetGlobeIncome - SubstanceExclusion (SBIE=0 for CH QDMTT)
+    sub(oc, "ExcessProfits", data["net_globe_income"])
+
+    qdmtt = sub(oc, "QDMTT")
+    sub(qdmtt, "FAS",            cfg["fas"])
+    sub(qdmtt, "Amount",         data["adjusted_cov_tax"])
+    sub(qdmtt, "SBIEAvailable",  "false")
+    sub(qdmtt, "DeMinAvailable", "false")
+    sub(qdmtt, "Currency",       cfg["currency"])
+
+    sub(oc, "TopUpTax", 0)
+
+    ente = sub(oc, "ExcessNegTaxExpense")
+    sub(ente, "PriorYearBalance", 0)
+    sub(ente, "GeneratedInRFY",   0)
+    sub(ente, "UtilizedInRFY",    0)
+    sub(ente, "Remaining",        0)
+
     jur_doc = sub(jur_sec, "DocSpec")
-    sub(jur_doc, "DocTypeIndic", "OECD1")
-    sub(jur_doc, "DocRefId",     f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}")
+    ET.SubElement(jur_doc, S + "DocTypeIndic").text = "OECD1"
+    ET.SubElement(jur_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
     ET.indent(root, space="  ")
     raw = ET.tostring(root, encoding="unicode")
@@ -452,8 +472,8 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     fi_doc = root.find(_nsp("GLOBEBody/FilingInfo/DocSpec"))
     fi_doc_ok = (
         fi_doc is not None and
-        fi_doc.find(N + "DocTypeIndic") is not None and
-        fi_doc.find(N + "DocRefId") is not None
+        fi_doc.find(S + "DocTypeIndic") is not None and
+        fi_doc.find(S + "DocRefId") is not None
     )
     check("FilingInfo DocSpec (DocTypeIndic + DocRefId)", fi_doc_ok)
 
@@ -467,15 +487,15 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     jur_doc = root.find(_nsp("GLOBEBody/JurisdictionSection/DocSpec"))
     jur_doc_ok = (
         jur_doc is not None and
-        jur_doc.find(N + "DocTypeIndic") is not None and
-        jur_doc.find(N + "DocRefId") is not None
+        jur_doc.find(S + "DocTypeIndic") is not None and
+        jur_doc.find(S + "DocRefId") is not None
     )
     check("JurisdictionSection DocSpec (DocTypeIndic + DocRefId)", jur_doc_ok)
 
-    # Currency currCode
+    # Currency — ISO 4217 text content
     ccy_el = root.find(_nsp("GLOBEBody/FilingInfo/AccountingInfo/Currency"))
-    check("Currency currCode attribute",
-          bool(ccy_el is not None and ccy_el.get("currCode")))
+    check("Currency (ISO 4217 text)",
+          bool(ccy_el is not None and ccy_el.text and len(ccy_el.text.strip()) == 3))
 
     # OverallComputation — required elements
     oc = ("GLOBEBody/JurisdictionSection/GLoBETax/ETR"

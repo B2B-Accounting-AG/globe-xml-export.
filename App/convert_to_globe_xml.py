@@ -38,7 +38,7 @@ CONFIG = {
 
 
 # ─── XML NAMESPACES ───────────────────────────────────────────────────────────
-GIR_NS = "urn:oecd:ties:gir:v1"
+GIR_NS = "urn:oecd:ties:globe:v2"   # confirmed from GLOBEXML_v1.0.xsd targetNamespace
 XSI_NS = "http://www.w3.org/2001/XMLSchema-instance"
 ET.register_namespace("globe", GIR_NS)
 ET.register_namespace("xsi", XSI_NS)
@@ -196,7 +196,7 @@ def build_xml(data: dict, cfg: dict) -> ET.Element:
 
     root = ET.Element(N + "GLOBE_OECD", {
         "version": "1.0",
-        "{" + XSI_NS + "}schemaLocation": "urn:oecd:ties:gir:v1 GlobeXML_v1.0.xsd",
+        "{" + XSI_NS + "}schemaLocation": "urn:oecd:ties:globe:v2 GLOBEXML_v1.0.xsd",
     })
 
     # ── MessageSpec ───────────────────────────────────────────────────────

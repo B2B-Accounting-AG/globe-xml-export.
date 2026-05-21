@@ -31,12 +31,15 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.1.4"
+VERSION = "1.1.5"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
-# No namespace — all elements use plain tag names per ESTV Technische-Wegleitung §6.4
-N = ""
+# CRS pattern: root element also carries the prefix (crs:CRS_OECD xmlns:crs="...")
+# GIR follows the same convention: globe:GLOBE_OECD xmlns:globe="urn:oecd:ties:gir:v1"
+GLOBE_NS = "urn:oecd:ties:gir:v1"
+N = "{" + GLOBE_NS + "}"
+ET.register_namespace("globe", GLOBE_NS)
 
 
 # ─── MAPPINGS ────────────────────────────────────────────────────────────────
@@ -241,7 +244,7 @@ def build_xml(data: dict, cfg: dict) -> str:
     year = cfg["period_end"][:4]
     msg_ref = f"{cfg['jurisdiction']}{year}{cfg['jurisdiction']}{str(uuid.uuid4())}"
 
-    root = ET.Element("GLOBE_OECD", {"version": "1.0"})
+    root = ET.Element(N + "GLOBE_OECD", {"version": "1.0"})
 
     hdr = sub(root, "MessageSpec")
     sub(hdr, "TransmittingCountry", cfg["jurisdiction"])
@@ -314,9 +317,6 @@ def build_xml(data: dict, cfg: dict) -> str:
 
     ET.indent(root, space="  ")
     raw = ET.tostring(root, encoding="unicode")
-    # ESTV validator requires the default namespace declaration to locate the element
-    # in its XSD. §6.4 shows no prefixes, but xmlns= must still be present.
-    raw = raw.replace('<GLOBE_OECD ', '<GLOBE_OECD xmlns="urn:oecd:ties:gir:v1" ', 1)
     return f"<?xml version='1.0' encoding='utf-8'?>\n{raw}"
 
 
@@ -377,16 +377,19 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
         check("Well-formed XML", False, str(e))
         return results
 
+    def _nsp(path: str) -> str:
+        return "/".join(N + s for s in path.split("/"))
+
     def text(path):
-        el = root.find(path)
+        el = root.find(_nsp(path))
         return el.text.strip() if el is not None and el.text else None
 
     def findall(path):
-        return root.findall(path)
+        return root.findall(_nsp(path))
 
     # 2. Root element
-    check("Root element (GLOBE_OECD)",
-          root.tag == "GLOBE_OECD" and root.find("MessageSpec") is not None)
+    check("Root element (globe:GLOBE_OECD)",
+          root.tag == N + "GLOBE_OECD" and root.find(N + "MessageSpec") is not None)
 
     # 3. MessageSpec — all required fields (incl. Swiss SendingEntityIN)
     hdr_fields = ["TransmittingCountry", "ReceivingCountry", "MessageType",
@@ -418,7 +421,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     check("Period dates (YYYY-MM-DD)", date_ok,
           f"Start: {start}  End: {end}" if not date_ok else "")
 
-    # 7. Company name — not placeholder (FilingCE direct child, no ID wrapper)
+    # 7. Company name — not placeholder
     name = text("GLOBEBody/FilingInfo/FilingCE/Name")
     name_ok = bool(name and name != "PLACEHOLDER_COMPANY_AG")
     check("Company name (not placeholder)", name_ok,
@@ -431,7 +434,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
           role or "missing")
 
     # 9. TIN — not placeholder, has required attributes
-    tin_el = root.find("GLOBEBody/FilingInfo/FilingCE/TIN")
+    tin_el = root.find(_nsp("GLOBEBody/FilingInfo/FilingCE/TIN"))
     tin_val = tin_el.text.strip() if tin_el is not None and tin_el.text else None
     tin_ok = bool(tin_val and tin_val != "CHE-123456789")
     check("TIN (not placeholder)", tin_ok,
@@ -441,11 +444,11 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
               bool(tin_el.get("issuedBy") and tin_el.get("TypeOfTIN")))
 
     # 10. DocSpec in FilingInfo
-    fi_doc = root.find("GLOBEBody/FilingInfo/DocSpec")
+    fi_doc = root.find(_nsp("GLOBEBody/FilingInfo/DocSpec"))
     fi_doc_ok = (
         fi_doc is not None and
-        fi_doc.find("DocTypeIndic") is not None and
-        fi_doc.find("DocRefId") is not None
+        fi_doc.find(N + "DocTypeIndic") is not None and
+        fi_doc.find(N + "DocRefId") is not None
     )
     check("FilingInfo DocSpec (DocTypeIndic + DocRefId)", fi_doc_ok)
 
@@ -456,20 +459,20 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
           rec_jur or "missing")
 
     # 12. DocSpec in JurisdictionSection
-    jur_doc = root.find("GLOBEBody/JurisdictionSection/DocSpec")
+    jur_doc = root.find(_nsp("GLOBEBody/JurisdictionSection/DocSpec"))
     jur_doc_ok = (
         jur_doc is not None and
-        jur_doc.find("DocTypeIndic") is not None and
-        jur_doc.find("DocRefId") is not None
+        jur_doc.find(N + "DocTypeIndic") is not None and
+        jur_doc.find(N + "DocRefId") is not None
     )
     check("JurisdictionSection DocSpec (DocTypeIndic + DocRefId)", jur_doc_ok)
 
-    # 8. Currency currCode
-    ccy_el = root.find("GLOBEBody/FilingInfo/AccountingInfo/Currency")
+    # Currency currCode
+    ccy_el = root.find(_nsp("GLOBEBody/FilingInfo/AccountingInfo/Currency"))
     check("Currency currCode attribute",
           bool(ccy_el is not None and ccy_el.get("currCode")))
 
-    # 9. OverallComputation — required elements
+    # OverallComputation — required elements
     oc = ("GLOBEBody/JurisdictionSection/GLoBETax/ETR"
           "/ETRStatus/ETRComputation/OverallComputation")
     oc_fields = ["FANIL", "AdjustedFANIL", "IncomeTaxExpense",
@@ -478,7 +481,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     check("OverallComputation — required elements", not missing_oc,
           f"Missing: {', '.join(missing_oc)}" if missing_oc else "")
 
-    # 10. ETRRate — decimal 0–1, 4 decimal places
+    # ETRRate — decimal 0–1, 4 decimal places
     etr_val = text(f"{oc}/ETRRate")
     try:
         etr_f  = float(etr_val) if etr_val else None
@@ -488,12 +491,12 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
         etr_ok = False
     check("ETRRate format (0.0000 – 1.0000)", etr_ok, etr_val or "missing")
 
-    # 11. TopUpTaxPercentage format
+    # TopUpTaxPercentage format
     tup = text(f"{oc}/TopUpTaxPercentage")
     check("TopUpTaxPercentage format (0.0000)",
           bool(tup and re.match(r"^\d\.\d{4}$", tup)), tup or "missing")
 
-    # 12. All 26 NetGlobeIncome adjustment items
+    # All 26 NetGlobeIncome adjustment items
     ngi_codes = {el.text for el in findall(
         f"{oc}/NetGlobeIncome/Adjustments/AdjustmentItem") if el.text}
     expected_ngi = {f"GIR{2000+i}" for i in range(1, 27)}
@@ -501,7 +504,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     check("NetGlobeIncome — all 26 adjustments (GIR2001–GIR2026)", not missing_ngi,
           f"Missing: {', '.join(sorted(missing_ngi))}" if missing_ngi else "")
 
-    # 13. All 19 AdjustedCoveredTax adjustment items (GIR2701–GIR2720, no GIR2702)
+    # All 19 AdjustedCoveredTax adjustment items (GIR2701–GIR2720, no GIR2702)
     act_codes = {el.text for el in findall(
         f"{oc}/AdjustedCoveredTax/Adjustments/AdjustmentItem") if el.text}
     expected_act = {f"GIR27{i:02d}" for i in range(1, 21) if i != 2}
@@ -509,8 +512,8 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     check("AdjustedCoveredTax — all 19 adjustments (GIR2701–GIR2720)", not missing_act,
           f"Missing: {', '.join(sorted(missing_act))}" if missing_act else "")
 
-    # 14. All amounts are integers
-    non_int = [el.text for el in root.findall(".//Amount")
+    # All amounts are integers
+    non_int = [el.text for el in root.findall(".//" + N + "Amount")
                if el.text and "." in el.text]
     check("All amounts are integers (no decimals)", not non_int,
           f"Non-integer: {non_int[:3]}" if non_int else "")

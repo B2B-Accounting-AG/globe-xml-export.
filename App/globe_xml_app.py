@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.5.2"
+VERSION = "1.5.0"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -318,14 +318,10 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(period, "End",   cfg["period_end"])
     sub(fi, "NameMNE", cfg["company_name"])
 
-    # FilingInfo uses OECD10 for CTS test submissions; data sections always use OECD1.
-    # CTS portal identifies test submissions by OECD10 in FilingInfo only.
-    # Using OECD10 in other sections triggers rule 60013 (validator maps it to OECD0).
-    fi_doc_type  = "OECD10" if test_mode else "OECD1"
-    sec_doc_type = "OECD1"
+    doc_type_indic = "OECD10" if test_mode else "OECD1"
 
     fi_doc = sub(fi, "DocSpec")
-    ET.SubElement(fi_doc, S + "DocTypeIndic").text = fi_doc_type
+    ET.SubElement(fi_doc, S + "DocTypeIndic").text = doc_type_indic
     ET.SubElement(fi_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
     gen_sec = sub(body, "GeneralSection")
@@ -342,7 +338,7 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(id_el, "Rules", cfg["upe_rules"])
     sub(id_el, "GlobeStatus", cfg["upe_globe_status"])
     gen_doc = sub(gen_sec, "DocSpec")
-    ET.SubElement(gen_doc, S + "DocTypeIndic").text = sec_doc_type
+    ET.SubElement(gen_doc, S + "DocTypeIndic").text = doc_type_indic
     ET.SubElement(gen_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
     jur_sec = sub(body, "JurisdictionSection")
@@ -398,7 +394,7 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(ente, "Remaining",        0)
 
     jur_doc = sub(jur_sec, "DocSpec")
-    ET.SubElement(jur_doc, S + "DocTypeIndic").text = sec_doc_type
+    ET.SubElement(jur_doc, S + "DocTypeIndic").text = doc_type_indic
     ET.SubElement(jur_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
     ET.indent(root, space="  ")
@@ -645,10 +641,10 @@ T: dict[str, dict[str, str]] = {
     "cfs_upe_help":        {"EN": "Type of Consolidated Financial Statement of the Ultimate Parent Entity",
                             "DE": "Art des konsolidierten Abschlusses der obersten Muttergesellschaft"},
     "submission_mode":     {"EN": "Submission mode",                   "DE": "Einreichungsmodus"},
-    "mode_production":     {"EN": "Production — eportal.admin.ch",     "DE": "Produktion — eportal.admin.ch"},
-    "mode_test":           {"EN": "Test / CTS — eportal-a.admin.ch",  "DE": "Test / CTS — eportal-a.admin.ch"},
-    "mode_help":           {"EN": "Both modes use OECD1. Submit to CTS (eportal-a.admin.ch) for testing, Production (eportal.admin.ch) for live submissions.",
-                            "DE": "Beide Modi verwenden OECD1. CTS (eportal-a.admin.ch) für Tests, Produktion (eportal.admin.ch) für Live-Einreichungen."},
+    "mode_production":     {"EN": "Production (OECD1)",                "DE": "Produktion (OECD1)"},
+    "mode_test":           {"EN": "Test / CTS (OECD10)",               "DE": "Test / CTS (OECD10)"},
+    "mode_help":           {"EN": "Use Test/CTS for the acceptance portal (eportal-a.admin.ch). Use Production for the live portal (eportal.admin.ch).",
+                            "DE": "Test/CTS für das Abnahmeportal (eportal-a.admin.ch), Produktion für das Live-Portal (eportal.admin.ch)."},
     "gir401":              {"EN": "GIR401 — Ultimate Parent Entity (UPE)",    "DE": "GIR401 — Oberste Muttergesellschaft (UPE)"},
     "gir402":              {"EN": "GIR402 — Designated Filing Entity (DFE)",  "DE": "GIR402 — Benannte Einreichungsstelle (DFE)"},
     "gir404":              {"EN": "GIR404 — Constituent Entity (CE)",         "DE": "GIR404 — Untereinheit (CE)"},

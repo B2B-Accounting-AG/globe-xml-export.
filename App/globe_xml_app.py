@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -244,12 +244,11 @@ def build_xml(data: dict, cfg: dict) -> str:
     year = cfg["period_end"][:4]
     msg_ref = f"{cfg['jurisdiction']}{year}{cfg['jurisdiction']}{str(uuid.uuid4())}"
 
-    # Root element is in NO namespace per OECD GIR schema (Appendix A).
-    # Children (MessageSpec, GLOBEBody) are in urn:oecd:ties:gir:v1 with globe: prefix.
-    # xsi:noNamespaceSchemaLocation tells the ESTV validator where to find the wrapper XSD.
-    root = ET.Element("GLOBE_OECD", {
+    # CRS-equivalent pattern: root element in urn:oecd:ties:gir:v1 namespace with globe: prefix,
+    # xsi:schemaLocation points to the same namespace URI + XSD filename (mirrors CRS pattern).
+    root = ET.Element(N + "GLOBE_OECD", {
         "version": "1.0",
-        "{" + XSI_NS + "}noNamespaceSchemaLocation": "GlobeXML_v1.0.xsd",
+        "{" + XSI_NS + "}schemaLocation": "urn:oecd:ties:gir:v1 GlobeXML_v1.0.xsd",
     })
 
     hdr = sub(root, "MessageSpec")
@@ -395,7 +394,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
 
     # 2. Root element
     check("Root element (GLOBE_OECD)",
-          root.tag == "GLOBE_OECD" and root.find(N + "MessageSpec") is not None)
+          root.tag == N + "GLOBE_OECD" and root.find(N + "MessageSpec") is not None)
 
     # 3. MessageSpec — all required fields (incl. Swiss SendingEntityIN)
     hdr_fields = ["TransmittingCountry", "ReceivingCountry", "MessageType",

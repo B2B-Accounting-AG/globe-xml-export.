@@ -194,9 +194,9 @@ def build_xml(data: dict, cfg: dict) -> ET.Element:
         f"{str(uuid.uuid4()).replace('-','')[:12].upper()}"
     )
 
-    root = ET.Element("GLOBE_OECD", {
+    root = ET.Element(N + "GLOBE_OECD", {
         "version": "1.0",
-        "{" + XSI_NS + "}noNamespaceSchemaLocation": "GlobeXML_v1.0.xsd",
+        "{" + XSI_NS + "}schemaLocation": "urn:oecd:ties:gir:v1 GlobeXML_v1.0.xsd",
     })
 
     # ── MessageSpec ───────────────────────────────────────────────────────

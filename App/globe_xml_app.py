@@ -31,13 +31,14 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.1.5"
+VERSION = "1.1.6"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
-# CRS pattern: root element also carries the prefix (crs:CRS_OECD xmlns:crs="...")
-# GIR follows the same convention: globe:GLOBE_OECD xmlns:globe="urn:oecd:ties:gir:v1"
-GLOBE_NS = "urn:oecd:ties:gir:v1"
+# OECD GIR schema (January 2025): namespace is urn:oecd:ties:globe:v1
+# All elements (including root GLOBE_OECD) use the globe: prefix.
+# Analogous to CRS: crs:CRS_OECD xmlns:crs="urn:oecd:ties:crs:v3"
+GLOBE_NS = "urn:oecd:ties:globe:v1"
 N = "{" + GLOBE_NS + "}"
 ET.register_namespace("globe", GLOBE_NS)
 

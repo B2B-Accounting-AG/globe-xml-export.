@@ -536,28 +536,27 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Header: logo + title
-col_logo, col_title = st.columns([1, 3])
-with col_logo:
-    if _MME_LOGO_SVG:
-        scaled_svg = _MME_LOGO_SVG.replace(
-            'width="204" height="65"',
-            'width="90" height="29" viewBox="0 0 204 65"',
-        )
-        st.markdown(
-            f"<div style='padding-top:16px;'>{scaled_svg}</div>",
-            unsafe_allow_html=True,
-        )
-with col_title:
-    st.markdown(
-        "<h1 style='margin-top:18px; color:#313c45; font-size:1.4rem; font-weight:700;"
-        "font-family:\"Helvetica Neue\",Helvetica,Arial,sans-serif;'>"
-        "GloBE Information Return (GIR)<br>"
-        "<span style='font-size:0.95rem; color:#6a7681; font-weight:400;'>"
-        "Swiss QDMTT 2024 &nbsp;·&nbsp; OECD GIR XML Schema (January 2025)"
-        "</span></h1>",
-        unsafe_allow_html=True,
+# Header: logo + title (vertically centered)
+if _MME_LOGO_SVG:
+    scaled_svg = _MME_LOGO_SVG.replace(
+        'width="204" height="65"',
+        'width="90" height="29" viewBox="0 0 204 65"',
     )
+else:
+    scaled_svg = ""
+
+st.markdown(
+    f"""
+    <div style='display:flex; align-items:center; gap:24px; padding:12px 0 8px 0;'>
+        <div>{scaled_svg}</div>
+        <h1 style='margin:0; color:#313c45; font-size:1.4rem; font-weight:700;
+            font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;'>
+            GloBE Information Return (GIR)
+        </h1>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.divider()
 

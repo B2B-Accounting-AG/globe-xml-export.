@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -248,7 +248,7 @@ def build_xml(data: dict, cfg: dict) -> str:
     sub(hdr, "TransmittingCountry", cfg["jurisdiction"])
     sub(hdr, "ReceivingCountry",    cfg["jurisdiction"])
     sub(hdr, "MessageType",         "GIR")
-    sub(hdr, "MessageRefID",        msg_ref)
+    sub(hdr, "MessageRefId",        msg_ref)
     sub(hdr, "MessageTypeIndic",    "GIR101")
     sub(hdr, "ReportingPeriod",     cfg["period_end"])
     sub(hdr, "Timestamp",           now)
@@ -390,15 +390,15 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
 
     # 3. MessageSpec — all required fields (incl. Swiss SendingEntityIN)
     hdr_fields = ["TransmittingCountry", "ReceivingCountry", "MessageType",
-                  "MessageRefID", "MessageTypeIndic", "ReportingPeriod",
+                  "MessageRefId", "MessageTypeIndic", "ReportingPeriod",
                   "Timestamp", "SendingEntityIN"]
     missing_hdr = [f for f in hdr_fields if text(f"g:MessageSpec/g:{f}") is None]
     check("MessageSpec — all required fields (incl. SendingEntityIN)", not missing_hdr,
           f"Missing: {', '.join(missing_hdr)}" if missing_hdr else "")
 
-    # 4. MessageRefID format: CH[0-9]{4}CH...
-    msg_ref = text("g:MessageSpec/g:MessageRefID")
-    check("MessageRefID format (CH[year]CH[uuid])",
+    # 4. MessageRefId format: CH[0-9]{4}CH...
+    msg_ref = text("g:MessageSpec/g:MessageRefId")
+    check("MessageRefId format (CH[year]CH[uuid])",
           bool(msg_ref and re.match(r"^[A-Z]{2}\d{4}[A-Z]{2}.+", msg_ref)),
           msg_ref or "missing")
 

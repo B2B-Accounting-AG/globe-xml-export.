@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.5.0"
+VERSION = "1.5.3"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -319,6 +319,9 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(fi, "NameMNE", cfg["company_name"])
 
     doc_type_indic = "OECD10" if test_mode else "OECD1"
+    # TEMP v1.5.3: ESTV CTS validator misreads OECD10 as OECD0 in non-FilingInfo sections (60013/60014).
+    # Use OECD11 in GeneralSection/JurisdictionSection to bypass. Revert to doc_type_indic once ESTV fixes CTS.
+    doc_type_indic_sections = "OECD11" if test_mode else "OECD1"
 
     fi_doc = sub(fi, "DocSpec")
     ET.SubElement(fi_doc, S + "DocTypeIndic").text = doc_type_indic
@@ -338,7 +341,7 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(id_el, "Rules", cfg["upe_rules"])
     sub(id_el, "GlobeStatus", cfg["upe_globe_status"])
     gen_doc = sub(gen_sec, "DocSpec")
-    ET.SubElement(gen_doc, S + "DocTypeIndic").text = doc_type_indic
+    ET.SubElement(gen_doc, S + "DocTypeIndic").text = doc_type_indic_sections
     ET.SubElement(gen_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
     jur_sec = sub(body, "JurisdictionSection")
@@ -394,7 +397,7 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(ente, "Remaining",        0)
 
     jur_doc = sub(jur_sec, "DocSpec")
-    ET.SubElement(jur_doc, S + "DocTypeIndic").text = doc_type_indic
+    ET.SubElement(jur_doc, S + "DocTypeIndic").text = doc_type_indic_sections
     ET.SubElement(jur_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
 
     ET.indent(root, space="  ")

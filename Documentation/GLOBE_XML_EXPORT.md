@@ -1,7 +1,7 @@
 # GloBE XML Export — Documentation
 
 **MME Legal | Tax | Compliance** — in cooperation with Mutara  
-Swiss QDMTT 2024 · OECD GIR XML Schema (January 2025) · **v1.5.4**
+Swiss QDMTT 2024 · OECD GIR XML Schema (January 2025) · **v1.5.5**
 
 ---
 

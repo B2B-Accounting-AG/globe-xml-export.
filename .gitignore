@@ -11,3 +11,6 @@ Calculation File*.xlsm
 
 # Embedded repo
 globe-xml-export/
+
+# Internal docs
+Documentation/INTERNAL_ROADMAP.md

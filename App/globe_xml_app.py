@@ -645,7 +645,7 @@ T: dict[str, dict[str, str]] = {
                             "DE": "Art des konsolidierten Abschlusses der obersten Muttergesellschaft"},
     "submission_mode":     {"EN": "Submission mode",                   "DE": "Einreichungsmodus"},
     "mode_production":     {"EN": "Production (OECD1)",                "DE": "Produktion (OECD1)"},
-    "mode_test":           {"EN": "Test / CTS (OECD11 — temp. workaround)",  "DE": "Test / CTS (OECD11 — temp. Workaround)"},
+    "mode_test":           {"EN": "Test / CTS (OECD10)",               "DE": "Test / CTS (OECD10)"},
     "mode_help":           {"EN": "Use Test/CTS for the acceptance portal (eportal-a.admin.ch). Use Production for the live portal (eportal.admin.ch).",
                             "DE": "Test/CTS für das Abnahmeportal (eportal-a.admin.ch), Produktion für das Live-Portal (eportal.admin.ch)."},
     "gir401":              {"EN": "GIR401 — Ultimate Parent Entity (UPE)",    "DE": "GIR401 — Oberste Muttergesellschaft (UPE)"},

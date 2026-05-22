@@ -946,7 +946,7 @@ with col2:
 _rec_sel     = st.selectbox(
     T["partner_country"][lang],
     COUNTRY_DISPLAY,
-    index=_country_idx("DE"),
+    index=_country_idx("CH"),
     help=T["partner_help"][lang],
 )
 rec_jur_code = _rec_sel[:2]

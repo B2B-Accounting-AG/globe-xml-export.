@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "1.5.3"
+VERSION = "1.5.4"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -318,9 +318,9 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(period, "End",   cfg["period_end"])
     sub(fi, "NameMNE", cfg["company_name"])
 
-    doc_type_indic = "OECD10" if test_mode else "OECD1"
-    # TEMP v1.5.3: ESTV CTS validator misreads OECD10 as OECD0 in non-FilingInfo sections (60013/60014).
-    # Use OECD11 in GeneralSection/JurisdictionSection to bypass. Revert to doc_type_indic once ESTV fixes CTS.
+    # TEMP v1.5.3-1.5.4: ESTV CTS validator misreads OECD10 as OECD0 in all DocSpec positions (60013/60014).
+    # Use OECD11 everywhere in test mode to bypass. Revert to OECD10 once ESTV fixes CTS.
+    doc_type_indic = "OECD11" if test_mode else "OECD1"
     doc_type_indic_sections = "OECD11" if test_mode else "OECD1"
 
     fi_doc = sub(fi, "DocSpec")

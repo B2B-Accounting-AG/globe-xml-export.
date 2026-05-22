@@ -318,8 +318,7 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(period, "End",   cfg["period_end"])
     sub(fi, "NameMNE", cfg["company_name"])
 
-    # TEMP v1.5.3-1.5.4: ESTV CTS validator misreads OECD10 as OECD0 in all DocSpec positions (60013/60014).
-    # Use OECD11 everywhere in test mode to bypass. Revert to OECD10 once ESTV fixes CTS.
+    # OECD11 = new submission (Neumeldung) in test mode. OECD10 = resend (only for FilingInfo on corrections).
     doc_type_indic = "OECD11" if test_mode else "OECD1"
     doc_type_indic_sections = "OECD11" if test_mode else "OECD1"
 
@@ -645,7 +644,7 @@ T: dict[str, dict[str, str]] = {
                             "DE": "Art des konsolidierten Abschlusses der obersten Muttergesellschaft"},
     "submission_mode":     {"EN": "Submission mode",                   "DE": "Einreichungsmodus"},
     "mode_production":     {"EN": "Production (OECD1)",                "DE": "Produktion (OECD1)"},
-    "mode_test":           {"EN": "Test / CTS (OECD11 — temp. workaround)",  "DE": "Test / CTS (OECD11 — temp. Workaround)"},
+    "mode_test":           {"EN": "Test / CTS (OECD11)",                     "DE": "Test / CTS (OECD11)"},
     "mode_help":           {"EN": "Use Test/CTS for the acceptance portal (eportal-a.admin.ch). Use Production for the live portal (eportal.admin.ch).",
                             "DE": "Test/CTS für das Abnahmeportal (eportal-a.admin.ch), Produktion für das Live-Portal (eportal.admin.ch)."},
     "gir401":              {"EN": "GIR401 — Ultimate Parent Entity (UPE)",    "DE": "GIR401 — Oberste Muttergesellschaft (UPE)"},

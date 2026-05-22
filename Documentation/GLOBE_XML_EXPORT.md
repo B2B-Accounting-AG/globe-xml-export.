@@ -94,7 +94,7 @@ The file must contain a sheet named exactly **`QDMTT 2024`**.
 | Financial Accounting Standard | Dropdown | `Swiss GAAP FER` | Swiss GAAP FER, IFRS, US GAAP, UK GAAP, HGB, Local GAAP |
 | Period start | Date picker | `2024-01-01` | Calendar selector |
 | Period end | Date picker | `2024-12-31` | Calendar selector |
-| Partner country (RecJurCode) | Dropdown | `DE – Germany` | Receiving jurisdiction; must differ from Jurisdiction |
+| Partner country (RecJurCode) | Dropdown | `CH – Switzerland` | Receiving jurisdiction; must differ from Jurisdiction |
 
 **Advanced options** (defaults are correct for Swiss QDMTT):
 
@@ -103,7 +103,7 @@ The file must contain a sheet named exactly **`QDMTT 2024`**.
 | Filing role | `GIR401 — Ultimate Parent Entity (UPE)` | GIR401 = UPE, GIR402 = DFE, GIR404 = CE (matches ESTV ePortal roles) |
 | TIN type | `GIR3001 — Tax Identification Number (TIN)` | GIR3001 = TIN, GIR3002 = Functional equivalent |
 | CFS of UPE | `GIR501 — Consolidated Financial Statement (subparagraph a)` | GIR501–GIR503 |
-| Submission mode | `Test / CTS (OECD10)` | **Test / CTS** for `eportal-a.admin.ch`; **Production (OECD1)** for `eportal.admin.ch` |
+| Submission mode | `Test / CTS (OECD11 — temp. workaround)` | **Test / CTS** for `eportal-a.admin.ch` (uses OECD11, temp. workaround for ESTV CTS bug); **Production (OECD1)** for `eportal.admin.ch` |
 
 ### Step 3 — Export
 Click **Generate XML**. The app will:

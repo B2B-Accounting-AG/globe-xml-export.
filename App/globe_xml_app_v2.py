@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.2.0"
+VERSION = "2.2.1"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -643,10 +643,15 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     #    Summary elements come after GeneralSection and before any JurisdictionSection.
     safe_harbours = cfg.get("safe_harbours", [])
     comp_iso = data.get("jur_iso") or cfg["jurisdiction"]
+    # RecJurCode = the recipient/partner jurisdiction (CH for a domestic filing). Per
+    # ESTV rule 98201 every section's RecJurCode must also appear in the GeneralSection,
+    # which carries only this code — so all sections share it. The section's *own*
+    # jurisdiction is reported via the Jurisdiction element, not RecJurCode.
+    rec_jur = cfg["rec_jur_code"]
     for sh in safe_harbours:
         iso  = sh.get("iso") or comp_iso
         summ = sub(body, "Summary")
-        sub(summ, "RecJurCode", iso)
+        sub(summ, "RecJurCode", rec_jur)
         sub(sub(summ, "Jurisdiction"), "JurisdictionName", iso)
         sub(summ, "SafeHarbour", sh["sh_code"])           # Summary element order:
         if sh["sh_code"] == "GIR1202":                    # SafeHarbour → QDMTTut → GLoBETut
@@ -656,7 +661,7 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
 
     # ── Computed jurisdiction (sheet 3) — full ETR computation (Phase 1, unchanged).
     jur_sec = sub(body, "JurisdictionSection")
-    sub(jur_sec, "RecJurCode",  comp_iso)
+    sub(jur_sec, "RecJurCode",  rec_jur)
     sub(jur_sec, "Jurisdiction", comp_iso)
 
     globe_tax  = sub(jur_sec, "GLoBETax")
@@ -717,7 +722,7 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
             continue
         code   = sh["sh_code"]
         sh_sec = sub(body, "JurisdictionSection")
-        sub(sh_sec, "RecJurCode",  iso)
+        sub(sh_sec, "RecJurCode",  rec_jur)
         sub(sh_sec, "Jurisdiction", iso)
         gt = sub(sh_sec, "GLoBETax")
         if code in CBCR_SH_CODES:

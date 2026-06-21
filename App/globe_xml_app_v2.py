@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.3.4"
+VERSION = "2.3.5"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1554,28 +1554,35 @@ _safe_harbours = st.session_state.get("safe_harbours", [])
 if _safe_harbours:
     st.markdown(f"**{T['sh_title'][lang]}**")
     st.caption(T["sh_help"][lang].format(len(_safe_harbours)))
-    _sh_jur_col = T["ce_col_jur"][lang]
-    _sh_sh_col  = "Safe harbour" if lang == "EN" else "Safe Harbour"
-    st.dataframe(
-        [{_sh_jur_col: f"{sh.get('iso') or '?'} — {sh.get('name', '')}",
-          _sh_sh_col:  f"{sh['sh_code']} — {_SH_CODE_LABELS.get(sh['sh_code'], '')}"}
-         for sh in _safe_harbours],
-        hide_index=True, use_container_width=True,
-    )
-    _sh_isos  = [sh.get("iso") or "?" for sh in _safe_harbours]
-    _sh_label = {(sh.get("iso") or "?"): f"{sh.get('iso') or '?'} — {sh.get('name','')}"
-                 for sh in _safe_harbours}
-    with st.expander("Advanced: choose which jurisdictions to include"
-                     if lang == "EN" else "Erweitert: Jurisdiktionen auswählen"):
-        st.caption("All jurisdictions are included by default. Deselect to emit a subset (e.g. for testing)."
-                   if lang == "EN" else
-                   "Standardmässig sind alle Jurisdiktionen enthalten. Abwählen, um eine Teilmenge zu erzeugen.")
-        _sh_selected = st.multiselect(
-            T["sh_title"][lang], _sh_isos, default=_sh_isos,
-            format_func=lambda i: _sh_label.get(i, i), label_visibility="collapsed",
-            key="sh_select",
-        )
-    st.session_state["sh_selected_isos"] = _sh_selected
+    _excluded = st.session_state.setdefault("sh_excluded", set())
+    # Header row + one row per included jurisdiction, each with a ✕ to remove it.
+    _h1, _h2, _h3 = st.columns([5, 6, 1])
+    _h1.markdown(f"<span style='color:#6a7681;font-size:0.8rem;'>{T['ce_col_jur'][lang]}</span>",
+                 unsafe_allow_html=True)
+    _h2.markdown("<span style='color:#6a7681;font-size:0.8rem;'>"
+                 + ("Safe harbour" if lang == "EN" else "Safe Harbour") + "</span>", unsafe_allow_html=True)
+    for _i, sh in enumerate(_safe_harbours):
+        _iso = sh.get("iso") or "?"
+        if _iso in _excluded:
+            continue
+        _c1, _c2, _c3 = st.columns([5, 6, 1])
+        _c1.write(f"{_iso} — {sh.get('name', '')}")
+        _c2.write(f"{sh['sh_code']} — {_SH_CODE_LABELS.get(sh['sh_code'], '')}")
+        if _c3.button("✕", key=f"rm_{_i}_{_iso}",
+                      help="Remove this jurisdiction from the file" if lang == "EN"
+                           else "Diese Jurisdiktion aus der Datei entfernen"):
+            _excluded.add(_iso)
+            st.rerun()
+    if _excluded:
+        _r1, _r2 = st.columns([5, 2])
+        _r1.caption((f"{len(_excluded)} removed: " if lang == "EN" else f"{len(_excluded)} entfernt: ")
+                    + ", ".join(sorted(_excluded)))
+        if _r2.button("↩ Reset" if lang == "EN" else "↩ Zurücksetzen", key="sh_reset"):
+            _excluded.clear()
+            st.rerun()
+    st.session_state["sh_selected_isos"] = [
+        (sh.get("iso") or "?") for sh in _safe_harbours if (sh.get("iso") or "?") not in _excluded
+    ]
 
 # ── Step 3: Export ────────────────────────────────────────────────────────────
 st.header(T["step3"][lang])

@@ -249,22 +249,20 @@ def sub(parent: ET.Element, tag: str, text=None, **attrib) -> ET.Element:
     return el
 
 
-def tin_element(parent: ET.Element, tin_value, issued_by=None, tin_type=None) -> ET.Element:
-    """Emit a globe:TIN element. Missing TINs are flagged unknown='true' with a
-    placeholder value (the schema requires non-empty text, min length 1)."""
-    attrib = {}
+def tin_element(parent: ET.Element, tin_value, issued_by=None, tin_type="GIR3001") -> ET.Element:
+    """Emit a globe:TIN element per ESTV business rules.
+    - Known TIN: value + TypeOfTIN (GIR3001) + issuedBy (both required, errors 70005/70004).
+    - Unknown TIN: value 'NOTIN', TypeOfTIN='GIR3004', unknown='true', NO issuedBy
+      (errors 70002/70003). NB: ESTV forbids an unknown TIN on a constituent entity's
+      own ID (error 70006) — that is enforced as a structural-validation failure, not here."""
     if tin_value:
+        attrib = {"TypeOfTIN": tin_type or "GIR3001"}
         if issued_by:
             attrib["issuedBy"] = issued_by
-        if tin_type:
-            attrib["TypeOfTIN"] = tin_type
         el = ET.SubElement(parent, N + "TIN", attrib)
         el.text = str(tin_value)
     else:
-        if issued_by:
-            attrib["issuedBy"] = issued_by
-        attrib["unknown"] = "true"
-        el = ET.SubElement(parent, N + "TIN", attrib)
+        el = ET.SubElement(parent, N + "TIN", {"TypeOfTIN": "GIR3004", "unknown": "true"})
         el.text = "NOTIN"
     return el
 
@@ -854,6 +852,19 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
             bad_ce.append(f"{label}: {', '.join(missing)}")
     check(f"CorporateStructure — CE entities complete (UPE + {len(ce_ids)} CE)",
           not bad_ce, "; ".join(bad_ce) if bad_ce else "")
+
+    # Every constituent entity must carry a real identity TIN — ESTV rejects an
+    # unknown TIN on a CE's own ID (error 70006). Hard requirement for this client.
+    no_tin = []
+    for i, ce_id in enumerate(ce_ids, 1):
+        tin = ce_id.find(N + "TIN")
+        if tin is not None and (tin.get("unknown") == "true"
+                                or (tin.text or "").strip() == "NOTIN"):
+            name_el = ce_id.find(N + "Name")
+            no_tin.append(name_el.text if name_el is not None and name_el.text else f"CE#{i}")
+    check("Every constituent entity has an identity TIN (ESTV 70006)",
+          not no_tin,
+          f"{len(no_tin)} without a TIN — complete in sheet 1: {', '.join(no_tin)}" if no_tin else "")
 
     # At least one JurisdictionSection carries a full ETR computation
     n_jur = len(findall("GLOBEBody/JurisdictionSection"))

@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.3.2"
+VERSION = "2.3.3"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -445,6 +445,7 @@ def read_mne_info(wb) -> dict:
             "rules":          _gir_code(ws.cell(row=38, column=col).value) or "GIR205",
             "globe_status":   _gir_code(ws.cell(row=43, column=col).value) or "GIR301",
             "ownership_type": _gir_code(ws.cell(row=45, column=col).value) or "GIR802",
+            "owner_tin":      _clean_tin(ws.cell(row=46, column=col).value),  # TIN of the holder
             "ownership_pct":  ws.cell(row=47, column=col).value,
         })
 
@@ -612,6 +613,8 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(id_el, "GlobeStatus", cfg["upe_globe_status"])
 
     # Other constituent entities (CorporateStructure/CE*), one per non-UPE entity.
+    # Map known CE TINs → jurisdiction so an owner reference can be issuedBy-matched.
+    ce_iso_by_tin = {c["tin"]: c.get("iso") for c in cfg.get("constituent_entities", []) if c.get("tin")}
     for ce in cfg.get("constituent_entities", []):
         ce_el = sub(corp, "CE")
         ce_id = sub(ce_el, "ID")
@@ -622,14 +625,23 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
                     tin_type=cfg["tin_type"])
         sub(ce_id, "Rules", ce.get("rules") or "GIR205")
         sub(ce_id, "GlobeStatus", ce.get("globe_status") or "GIR301")
-        # Ownership (1..n, required): owner is the UPE for GIR801, else unknown.
+        # Ownership (1..n, required). ESTV rule 70030: for GIR802/803/804 the owner
+        # TIN must match a reported CE's ID/TIN. The template provides the owner TIN
+        # in sheet-1 row 46; when present we use it (issuedBy matched to that CE).
+        # When absent (no intermediate-ownership data), report UPE ownership (GIR801)
+        # with the UPE's TIN, which ESTV accepts.
         own = sub(ce_el, "Ownership")
-        sub(own, "OwnershipType", ce.get("ownership_type") or "GIR802")
-        if (ce.get("ownership_type") or "") == "GIR801":
+        otype     = ce.get("ownership_type") or "GIR802"
+        owner_tin = ce.get("owner_tin")
+        if otype in ("GIR802", "GIR803", "GIR804") and owner_tin:
+            sub(own, "OwnershipType", otype)
+            tin_element(own, owner_tin,
+                        issued_by=ce_iso_by_tin.get(owner_tin) or ce.get("iso") or cfg["jurisdiction"],
+                        tin_type=cfg["tin_type"])
+        else:
+            sub(own, "OwnershipType", "GIR801")
             tin_element(own, cfg["tin_value"],
                         issued_by=cfg["tin_issued_by"], tin_type=cfg["tin_type"])
-        else:
-            tin_element(own, None, issued_by=ce.get("iso") or cfg["jurisdiction"])
         pct = ce.get("ownership_pct")
         try:
             pct_f = max(0.0, min(1.0, float(pct)))

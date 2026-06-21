@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.2.2"
+VERSION = "2.2.3"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1576,13 +1576,8 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     st.stop()
 
                 xml_str = build_xml(data, cfg, test_mode=(submission_mode == "test"))
-                # ESTV rule 50009: a test message (test DocTypeIndic OECD1x) MUST be
-                # uploaded with a filename starting with "Test"; otherwise the portal
-                # rejects it at ingestion ("could not be processed"). The encryptor
-                # keeps the basename, so prefixing the XML name propagates to the zip.
-                _fn_prefix = "Test_" if submission_mode == "test" else ""
                 st.session_state["xml_str"]      = xml_str
-                st.session_state["xml_filename"] = f"{_fn_prefix}gir_{period_end[:4]}_{jurisdiction}.xml"
+                st.session_state["xml_filename"] = f"gir_{period_end[:4]}_{jurisdiction}.xml"
 
                 etr_val = fmt_etr(data["adjusted_cov_tax"], data["net_globe_income"])
                 cols = st.columns(4)

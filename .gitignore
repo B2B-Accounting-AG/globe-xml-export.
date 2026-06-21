@@ -14,3 +14,4 @@ globe-xml-export/
 
 # Internal docs
 Documentation/INTERNAL_ROADMAP.md
+__pycache__/

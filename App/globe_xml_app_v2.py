@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.2.3"
+VERSION = "2.3.0"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1497,19 +1497,23 @@ if mne_entities:
     else:
         st.caption(T["ce_all_have_tin"][lang])
 
-# ── Safe-harbour jurisdictions (read-only summary of what will be emitted) ─────
+# ── Safe-harbour jurisdictions — selectable (also enables minimal test files) ─
 _safe_harbours = st.session_state.get("safe_harbours", [])
 if _safe_harbours:
     st.markdown(f"**{T['sh_title'][lang]}**")
     st.caption(T["sh_help"][lang].format(len(_safe_harbours)))
-    _sh_col = "Safe Harbour" if lang == "EN" else "Safe Harbour"
-    st.table([
-        {
-            T["ce_col_jur"][lang]: f"{sh.get('iso') or '?'} — {sh.get('name', '')}",
-            _sh_col: sh["sh_code"],
-        }
-        for sh in _safe_harbours
-    ])
+    _sh_isos  = [sh.get("iso") or "?" for sh in _safe_harbours]
+    _sh_label = {(sh.get("iso") or "?"): f"{sh.get('iso') or '?'} — {sh.get('name','')} ({sh['sh_code']})"
+                 for sh in _safe_harbours}
+    _sh_selected = st.multiselect(
+        "Safe-harbour jurisdictions to include" if lang == "EN" else "Einzuschliessende Safe-Harbour-Jurisdiktionen",
+        _sh_isos, default=_sh_isos,
+        format_func=lambda i: _sh_label.get(i, i),
+        help="Deselect to emit fewer sections — useful for isolating an ESTV ingestion problem."
+             if lang == "EN" else "Abwählen, um weniger Sektionen zu erzeugen (zur Eingrenzung von ESTV-Problemen).",
+        key="sh_select",
+    )
+    st.session_state["sh_selected_isos"] = _sh_selected
 
 # ── Step 3: Export ────────────────────────────────────────────────────────────
 st.header(T["step3"][lang])
@@ -1549,6 +1553,12 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                 # Use the (possibly TIN-edited) entities from the in-app table,
                 # falling back to the freshly parsed list.
                 ce_list = edited_entities or parsed["mne"]["constituent_entities"]
+                # Emit only the safe-harbour jurisdictions selected in the UI
+                # (default = all). Lets us submit minimal files to bisect ESTV issues.
+                _sel = st.session_state.get("sh_selected_isos")
+                sh_list = parsed["safe_harbours"] if _sel is None else [
+                    s for s in parsed["safe_harbours"] if (s.get("iso") or "?") in _sel
+                ]
 
                 cfg = {
                     "company_name":    company_name,
@@ -1566,7 +1576,7 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     "upe_rules":       upe_rules,
                     "upe_globe_status": upe_globe_status,
                     "constituent_entities": ce_list,
-                    "safe_harbours":        parsed["safe_harbours"],
+                    "safe_harbours":        sh_list,
                 }
 
                 input_errors = validate_inputs(cfg)

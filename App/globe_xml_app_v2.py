@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.3.3"
+VERSION = "2.3.4"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1180,19 +1180,23 @@ T: dict[str, dict[str, str]] = {
     "disclaimer_label":    {"EN": "Disclaimer",                        "DE": "Haftungsausschluss"},
     "disclaimer_text":     {
         "EN": (
-            "This tool is provided for informational purposes only and does not constitute legal or tax advice. "
-            "The generated XML output should be reviewed and validated by a qualified tax professional before "
-            "submission to the ESTV. MME accepts no liability for errors, inaccuracies, or omissions in the "
-            "output, or for any consequences arising from its use. Always verify the final file against the "
-            "official ESTV XSD schema prior to submission."
+            "This tool converts the figures and entity data from your GIR Excel template into the OECD GloBE "
+            "Information Return XML format and encrypts it for the ESTV portal. It does not calculate, interpret "
+            "or verify any tax position — the output reflects only the data you enter, and the completeness and "
+            "accuracy of the return remain your responsibility. The tool runs structural and schema checks, but "
+            "these do not replace ESTV's own validation: always submit to the ESTV test (ABN) portal first and "
+            "review the returned status message before filing for real. This tool does not constitute legal or "
+            "tax advice and is provided without warranty; have the return reviewed by a qualified professional."
         ),
         "DE": (
-            "Dieses Tool dient ausschliesslich zu Informationszwecken und stellt keine Rechts- oder "
-            "Steuerberatung dar. Der generierte XML-Output ist vor der Einreichung bei der ESTV von einer "
-            "qualifizierten Fachperson zu prüfen und zu validieren. MME übernimmt keine Haftung für Fehler, "
-            "Ungenauigkeiten oder Auslassungen im Output oder für Folgen, die sich aus dessen Verwendung "
-            "ergeben. Die finale Datei ist vor der Einreichung stets gegen das offizielle ESTV XSD-Schema "
-            "zu validieren."
+            "Dieses Tool wandelt die Zahlen und Einheitsdaten aus Ihrer GIR-Excel-Vorlage in das OECD-GloBE-"
+            "Information-Return-XML-Format um und verschlüsselt es für das ESTV-Portal. Es berechnet, interpretiert "
+            "oder prüft keine steuerliche Beurteilung — der Output gibt ausschliesslich die von Ihnen erfassten "
+            "Daten wieder, und die Vollständigkeit und Richtigkeit der Meldung liegen in Ihrer Verantwortung. Das "
+            "Tool führt strukturelle und Schema-Prüfungen durch, diese ersetzen jedoch nicht die Validierung der "
+            "ESTV: Reichen Sie stets zuerst im ESTV-Testportal (ABN) ein und prüfen Sie die zurückgegebene "
+            "Statusmeldung, bevor Sie produktiv einreichen. Dieses Tool stellt keine Rechts- oder Steuerberatung "
+            "dar und wird ohne Gewähr bereitgestellt; lassen Sie die Meldung von einer Fachperson prüfen."
         ),
     },
 }
@@ -1534,22 +1538,43 @@ if mne_entities:
     else:
         st.caption(T["ce_all_have_tin"][lang])
 
-# ── Safe-harbour jurisdictions — selectable (also enables minimal test files) ─
+# ── Safe-harbour jurisdictions — clean read-only summary + advanced subset picker
+_SH_CODE_LABELS = {
+    "GIR1201": "De minimis exclusion",
+    "GIR1202": "QDMTT safe harbour",
+    "GIR1203": "Transitional CbCR — De minimis test",
+    "GIR1204": "Transitional CbCR — ETR test",
+    "GIR1205": "Transitional CbCR — Routine profit test",
+    "GIR1206": "Transitional UTPR safe harbour",
+    "GIR1207": "Permanent SH — De minimis test",
+    "GIR1208": "Permanent SH — ETR test",
+    "GIR1209": "Permanent SH — Routine profit test",
+}
 _safe_harbours = st.session_state.get("safe_harbours", [])
 if _safe_harbours:
     st.markdown(f"**{T['sh_title'][lang]}**")
     st.caption(T["sh_help"][lang].format(len(_safe_harbours)))
-    _sh_isos  = [sh.get("iso") or "?" for sh in _safe_harbours]
-    _sh_label = {(sh.get("iso") or "?"): f"{sh.get('iso') or '?'} — {sh.get('name','')} ({sh['sh_code']})"
-                 for sh in _safe_harbours}
-    _sh_selected = st.multiselect(
-        "Safe-harbour jurisdictions to include" if lang == "EN" else "Einzuschliessende Safe-Harbour-Jurisdiktionen",
-        _sh_isos, default=_sh_isos,
-        format_func=lambda i: _sh_label.get(i, i),
-        help="Deselect to emit fewer sections — useful for isolating an ESTV ingestion problem."
-             if lang == "EN" else "Abwählen, um weniger Sektionen zu erzeugen (zur Eingrenzung von ESTV-Problemen).",
-        key="sh_select",
+    _sh_jur_col = T["ce_col_jur"][lang]
+    _sh_sh_col  = "Safe harbour" if lang == "EN" else "Safe Harbour"
+    st.dataframe(
+        [{_sh_jur_col: f"{sh.get('iso') or '?'} — {sh.get('name', '')}",
+          _sh_sh_col:  f"{sh['sh_code']} — {_SH_CODE_LABELS.get(sh['sh_code'], '')}"}
+         for sh in _safe_harbours],
+        hide_index=True, use_container_width=True,
     )
+    _sh_isos  = [sh.get("iso") or "?" for sh in _safe_harbours]
+    _sh_label = {(sh.get("iso") or "?"): f"{sh.get('iso') or '?'} — {sh.get('name','')}"
+                 for sh in _safe_harbours}
+    with st.expander("Advanced: choose which jurisdictions to include"
+                     if lang == "EN" else "Erweitert: Jurisdiktionen auswählen"):
+        st.caption("All jurisdictions are included by default. Deselect to emit a subset (e.g. for testing)."
+                   if lang == "EN" else
+                   "Standardmässig sind alle Jurisdiktionen enthalten. Abwählen, um eine Teilmenge zu erzeugen.")
+        _sh_selected = st.multiselect(
+            T["sh_title"][lang], _sh_isos, default=_sh_isos,
+            format_func=lambda i: _sh_label.get(i, i), label_visibility="collapsed",
+            key="sh_select",
+        )
     st.session_state["sh_selected_isos"] = _sh_selected
 
 # ── Step 3: Export ────────────────────────────────────────────────────────────

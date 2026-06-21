@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.3.5"
+VERSION = "2.3.6"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1555,8 +1555,16 @@ if _safe_harbours:
     st.markdown(f"**{T['sh_title'][lang]}**")
     st.caption(T["sh_help"][lang].format(len(_safe_harbours)))
     _excluded = st.session_state.setdefault("sh_excluded", set())
+    # Make the row ✕ a small, borderless glyph instead of a boxed button.
+    st.markdown("""
+    <style>
+    div[data-testid="stButton"] button[kind="tertiary"] {
+        color:#b9c2cb; padding:0 4px; min-height:0; line-height:1; font-size:0.9rem;
+    }
+    div[data-testid="stButton"] button[kind="tertiary"]:hover { color:#e0303c; }
+    </style>""", unsafe_allow_html=True)
     # Header row + one row per included jurisdiction, each with a ✕ to remove it.
-    _h1, _h2, _h3 = st.columns([5, 6, 1])
+    _h1, _h2, _h3 = st.columns([6, 7, 1])
     _h1.markdown(f"<span style='color:#6a7681;font-size:0.8rem;'>{T['ce_col_jur'][lang]}</span>",
                  unsafe_allow_html=True)
     _h2.markdown("<span style='color:#6a7681;font-size:0.8rem;'>"
@@ -1565,10 +1573,10 @@ if _safe_harbours:
         _iso = sh.get("iso") or "?"
         if _iso in _excluded:
             continue
-        _c1, _c2, _c3 = st.columns([5, 6, 1])
+        _c1, _c2, _c3 = st.columns([6, 7, 1], vertical_alignment="center")
         _c1.write(f"{_iso} — {sh.get('name', '')}")
         _c2.write(f"{sh['sh_code']} — {_SH_CODE_LABELS.get(sh['sh_code'], '')}")
-        if _c3.button("✕", key=f"rm_{_i}_{_iso}",
+        if _c3.button("✕", key=f"rm_{_i}_{_iso}", type="tertiary",
                       help="Remove this jurisdiction from the file" if lang == "EN"
                            else "Diese Jurisdiktion aus der Datei entfernen"):
             _excluded.add(_iso)

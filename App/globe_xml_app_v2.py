@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -653,6 +653,9 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
         summ = sub(body, "Summary")
         sub(summ, "RecJurCode", rec_jur)
         sub(sub(summ, "Jurisdiction"), "JurisdictionName", iso)
+        # ESTV rule 60024: a Summary carrying SafeHarbour/GLoBETut/… must also
+        # provide JurWithTaxingRights/JurisdictionName (the jurisdiction itself).
+        sub(sub(summ, "JurWithTaxingRights"), "JurisdictionName", iso)
         sub(summ, "SafeHarbour", sh["sh_code"])           # Summary element order:
         if sh["sh_code"] == "GIR1202":                    # SafeHarbour → QDMTTut → GLoBETut
             sub(summ, "QDMTTut", "GIR1401")               # QDMTT safe harbour: no QDMTT top-up tax
@@ -726,7 +729,14 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
         sub(sh_sec, "Jurisdiction", iso)
         gt = sub(sh_sec, "GLoBETax")
         if code in CBCR_SH_CODES:
-            ex   = sub(sub(sub(gt, "ETR"), "ETRStatus"), "ETRException")
+            etr = sub(gt, "ETR")
+            # ESTV rule 70046: a Transitional CbCR Safe Harbour ETR must carry a
+            # SubGroup with TypeofSubGroup GIR1607 (Constituent Entities). The
+            # template has no real subgroup, so the filing entity's TIN identifies it.
+            sg = sub(etr, "SubGroup")
+            tin_element(sg, cfg["tin_value"], issued_by=cfg["tin_issued_by"], tin_type=cfg["tin_type"])
+            sub(sg, "TypeofSubGroup", "GIR1607")
+            ex   = sub(sub(etr, "ETRStatus"), "ETRException")
             cbcr = sub(ex, "TransitionalCbCRSafeHarbour")   # order: Revenue, Profit, IncomeTax
             if sh.get("revenue") is not None:
                 sub(cbcr, "Revenue", sh["revenue"])
@@ -734,7 +744,11 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
             if sh.get("income_tax") is not None:
                 sub(cbcr, "IncomeTax", sh["income_tax"])
         elif code in UTPR_SH_CODES:
-            ex   = sub(sub(sub(gt, "ETR"), "ETRStatus"), "ETRException")
+            etr = sub(gt, "ETR")
+            sg  = sub(etr, "SubGroup")                       # GIR1609 = Transitional UTPR Safe Harbour
+            tin_element(sg, cfg["tin_value"], issued_by=cfg["tin_issued_by"], tin_type=cfg["tin_type"])
+            sub(sg, "TypeofSubGroup", "GIR1609")
+            ex   = sub(sub(etr, "ETRStatus"), "ETRException")
             utpr = sub(ex, "UTPRSafeHarbour")
             rate = sh.get("cit_rate") or 0.0
             sub(utpr, "CITRate", f"{max(0.0, min(1.0, float(rate))):.4f}")

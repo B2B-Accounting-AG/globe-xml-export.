@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.3.1"
+VERSION = "2.3.2"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -656,8 +656,19 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
         # ESTV rule 60024: a Summary carrying SafeHarbour/GLoBETut/… must also
         # provide JurWithTaxingRights/JurisdictionName (the jurisdiction itself).
         sub(sub(summ, "JurWithTaxingRights"), "JurisdictionName", iso)
-        sub(summ, "SafeHarbour", sh["sh_code"])           # Summary element order:
-        if sh["sh_code"] == "GIR1202":                    # SafeHarbour → QDMTTut → GLoBETut
+        sub(summ, "SafeHarbour", sh["sh_code"])           # Summary order: SafeHarbour →
+        if sh["sh_code"] == "GIR1202":                    # ETRRange → SBIE → QDMTTut → GLoBETut
+            # ESTV rule 70043: a GIR1202 (QDMTT SH) Summary with JurWithTaxingRights
+            # must also carry ETRRange, SBIE and QDMTTut.
+            if iso == comp_iso and data.get("net_globe_income"):
+                _r = max(0.0, min(1.0, data["adjusted_cov_tax"] / data["net_globe_income"]))
+                _band = f"GIR13{min(13, int(_r / 0.025) + 1):02d}"   # 2.5% bands; ≥30% → GIR1313
+            else:
+                _band = "GIR1314"                         # Section 3.2 not completed
+            sub(summ, "ETRRange", _band)
+            _sbie = sub(summ, "SBIE")
+            sub(_sbie, "NotApplicable", "false")          # SBIE applies (CH has an SBIE amount)
+            sub(_sbie, "NoTut", "true")                   # safe harbour ⇒ no top-up tax
             sub(summ, "QDMTTut", "GIR1401")               # QDMTT safe harbour: no QDMTT top-up tax
         sub(summ, "GLoBETut", "GIR1501")                  # safe harbour ⇒ GloBE top-up tax = 0
         add_docspec(summ)

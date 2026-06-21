@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -894,6 +894,15 @@ T: dict[str, dict[str, str]] = {
                             "DE": "Automatisches Ausfüllen aus der Vorlage fehlgeschlagen ({}). Bitte Angaben unten manuell erfassen."},
     "ce_count":            {"EN": "{} constituent entities read from the corporate structure (sheet 1).",
                             "DE": "{} Untereinheiten aus der Konzernstruktur (Blatt 1) gelesen."},
+    "ce_table_title":      {"EN": "Constituent entities — TINs", "DE": "Untereinheiten — UID/TIN"},
+    "ce_table_help":       {"EN": "Fill any missing TIN here (ESTV requires a TIN for every entity). Edits override the Excel.",
+                            "DE": "Fehlende UID/TIN hier ergänzen (die ESTV verlangt eine TIN je Einheit). Änderungen überschreiben die Excel-Datei."},
+    "ce_col_entity":       {"EN": "Entity",        "DE": "Einheit"},
+    "ce_col_jur":          {"EN": "Jurisdiction",  "DE": "Jurisdiktion"},
+    "ce_col_tin":          {"EN": "TIN",           "DE": "UID/TIN"},
+    "ce_missing_warn":     {"EN": "⚠️ {} entity(ies) still without a TIN — ESTV will reject these (error 70006). Fill them above before submitting.",
+                            "DE": "⚠️ {} Einheit(en) noch ohne UID/TIN — die ESTV weist diese zurück (Fehler 70006). Bitte oben ergänzen."},
+    "ce_all_have_tin":     {"EN": "✅ All constituent entities have a TIN.", "DE": "✅ Alle Untereinheiten haben eine UID/TIN."},
     "step2":               {"EN": "2. Company details",                "DE": "2. Unternehmensangaben"},
     "company_name":        {"EN": "Company name",                      "DE": "Firmenname"},
     "tin":                 {"EN": "TIN",                               "DE": "UID/TIN"},
@@ -1333,6 +1342,37 @@ with st.expander(T["advanced"][lang]):
         horizontal=True,
     )
 
+# ── Constituent-entity TIN editor (fill missing TINs in-app) ──────────────────
+# `edited_entities` is what build_xml uses; edits here override the Excel.
+edited_entities = mne_entities
+if mne_entities:
+    st.markdown(f"**{T['ce_table_title'][lang]}**")
+    st.caption(T["ce_table_help"][lang])
+    _rows = [{
+        T["ce_col_entity"][lang]: e["name"],
+        T["ce_col_jur"][lang]:    e.get("iso") or "",
+        T["ce_col_tin"][lang]:    e.get("tin") or "",
+    } for e in mne_entities]
+    _edited = st.data_editor(
+        _rows,
+        disabled=[T["ce_col_entity"][lang], T["ce_col_jur"][lang]],
+        hide_index=True,
+        use_container_width=True,
+        key=f"ce_editor_{st.session_state.get('_loaded_sig', 'none')}",
+    )
+    edited_entities = []
+    for _orig, _row in zip(mne_entities, _edited):
+        _e = dict(_orig)
+        _tin = str(_row.get(T["ce_col_tin"][lang], "") or "").strip()
+        _e["tin"] = _tin or None
+        edited_entities.append(_e)
+    st.session_state["mne_entities_edited"] = edited_entities
+    _n_missing = sum(1 for _e in edited_entities if not _e["tin"])
+    if _n_missing:
+        st.warning(T["ce_missing_warn"][lang].format(_n_missing))
+    else:
+        st.caption(T["ce_all_have_tin"][lang])
+
 # ── Step 3: Export ────────────────────────────────────────────────────────────
 st.header(T["step3"][lang])
 st.write("")
@@ -1368,6 +1408,9 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                 file_bytes = uploaded.getvalue()
                 parsed = read_excel_v2(file_bytes)
                 data   = parsed["data"]
+                # Use the (possibly TIN-edited) entities from the in-app table,
+                # falling back to the freshly parsed list.
+                ce_list = edited_entities or parsed["mne"]["constituent_entities"]
 
                 cfg = {
                     "company_name":    company_name,
@@ -1384,7 +1427,7 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     "period_end":      period_end,
                     "upe_rules":       upe_rules,
                     "upe_globe_status": upe_globe_status,
-                    "constituent_entities": parsed["mne"]["constituent_entities"],
+                    "constituent_entities": ce_list,
                 }
 
                 input_errors = validate_inputs(cfg)

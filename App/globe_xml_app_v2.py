@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.1.0"
+VERSION = "2.2.0"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -474,13 +474,72 @@ def read_computation(wb) -> dict:
     return data
 
 
+# ─── SAFE HARBOURS (sheet "2 Safe Harbours XX") ──────────────────────────────
+SAFE_HARBOUR_PREFIX = "2 Safe Harbours"
+SH_JUR_CELL      = "C6"    # name of the jurisdiction
+SH_ELECTED_CELL  = "C17"   # "1. Safe Harbour elected" → GIR1201..GIR1209
+SH_REVENUE_CELL  = "C37"   # Transitional CbCR: Total Revenue
+SH_PROFIT_CELL   = "C38"   # Transitional CbCR: Profit (Loss) before Income Tax
+SH_TAX_CELL      = "C39"   # Transitional CbCR: Simplified Covered Taxes
+SH_CITRATE_CELL  = "C42"   # Transitional UTPR: Corporate income tax rate
+
+# Which safe-harbour codes carry a Transitional CbCR Safe Harbour block.
+CBCR_SH_CODES = {"GIR1203", "GIR1204", "GIR1205"}
+UTPR_SH_CODES = {"GIR1206"}
+
+
+def _cell_num(ws, addr):
+    """Return an int for numeric cells, else None (blank/text)."""
+    v = ws[addr].value
+    if v is None or isinstance(v, str):
+        return None
+    try:
+        return int(round(float(v)))
+    except (TypeError, ValueError):
+        return None
+
+
+def read_safe_harbours(wb) -> list:
+    """Read every '2 Safe Harbours XX' tab that has a safe-harbour election.
+    Tabs with no election (C17 empty) are skipped — partially-filled templates
+    are normal, so empty jurisdiction tabs are simply ignored."""
+    out = []
+    for name in wb.sheetnames:
+        if not name.startswith(SAFE_HARBOUR_PREFIX):
+            continue
+        ws = wb[name]
+        sh_code = _gir_code(ws[SH_ELECTED_CELL].value)
+        if not sh_code:                       # empty / unfilled tab → ignore
+            continue
+        jur_name = ws[SH_JUR_CELL].value
+        cit = ws[SH_CITRATE_CELL].value
+        try:
+            cit = float(cit) if cit not in (None, "") else None
+        except (TypeError, ValueError):
+            cit = None
+        out.append({
+            "iso":        _iso_from_name(jur_name),
+            "name":       str(jur_name).strip() if jur_name else "",
+            "sh_code":    sh_code,
+            "revenue":    _cell_num(ws, SH_REVENUE_CELL),
+            "profit":     _cell_num(ws, SH_PROFIT_CELL),
+            "income_tax": _cell_num(ws, SH_TAX_CELL),
+            "cit_rate":   cit,
+        })
+    return out
+
+
 def read_excel_v2(file_bytes: bytes) -> dict:
-    """Parse the 2026 multi-sheet GIR template → {'mne': ..., 'data': ...}."""
+    """Parse the 2026 multi-sheet GIR template → {'mne', 'data', 'safe_harbours'}."""
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
     missing = [s for s in (MNE_SHEET, COMP_SHEET) if s not in wb.sheetnames]
     if missing:
         raise KeyError(", ".join(missing))
-    return {"mne": read_mne_info(wb), "data": read_computation(wb)}
+    return {
+        "mne":           read_mne_info(wb),
+        "data":          read_computation(wb),
+        "safe_harbours": read_safe_harbours(wb),
+    }
 
 
 def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
@@ -527,6 +586,13 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     doc_type_indic = "OECD11" if test_mode else "OECD1"
     doc_type_indic_sections = "OECD11" if test_mode else "OECD1"
 
+    def add_docspec(parent):
+        """Append a section DocSpec (DocTypeIndic + unique DocRefId)."""
+        ds = sub(parent, "DocSpec")
+        ET.SubElement(ds, S + "DocTypeIndic").text = doc_type_indic_sections
+        ET.SubElement(ds, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
+        return ds
+
     fi_doc = sub(fi, "DocSpec")
     ET.SubElement(fi_doc, S + "DocTypeIndic").text = doc_type_indic
     ET.SubElement(fi_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
@@ -571,16 +637,27 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
             pct_f = 1.0
         sub(own, "OwnershipPercentage", f"{pct_f:.4f}")
 
-    # Phase 2 insertion point: Summary* sections (safe-harbour enums) go between
-    # GeneralSection and JurisdictionSection per GLOBEBody ordering.
+    add_docspec(gen_sec)
 
-    gen_doc = sub(gen_sec, "DocSpec")
-    ET.SubElement(gen_doc, S + "DocTypeIndic").text = doc_type_indic_sections
-    ET.SubElement(gen_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
+    # ── Summaries — one per safe-harbour jurisdiction. Per GLOBEBody ordering, ALL
+    #    Summary elements come after GeneralSection and before any JurisdictionSection.
+    safe_harbours = cfg.get("safe_harbours", [])
+    comp_iso = data.get("jur_iso") or cfg["jurisdiction"]
+    for sh in safe_harbours:
+        iso  = sh.get("iso") or comp_iso
+        summ = sub(body, "Summary")
+        sub(summ, "RecJurCode", iso)
+        sub(sub(summ, "Jurisdiction"), "JurisdictionName", iso)
+        sub(summ, "SafeHarbour", sh["sh_code"])           # Summary element order:
+        if sh["sh_code"] == "GIR1202":                    # SafeHarbour → QDMTTut → GLoBETut
+            sub(summ, "QDMTTut", "GIR1401")               # QDMTT safe harbour: no QDMTT top-up tax
+        sub(summ, "GLoBETut", "GIR1501")                  # safe harbour ⇒ GloBE top-up tax = 0
+        add_docspec(summ)
 
+    # ── Computed jurisdiction (sheet 3) — full ETR computation (Phase 1, unchanged).
     jur_sec = sub(body, "JurisdictionSection")
-    sub(jur_sec, "RecJurCode",  cfg["rec_jur_code"])
-    sub(jur_sec, "Jurisdiction", cfg["rec_jur_code"])
+    sub(jur_sec, "RecJurCode",  comp_iso)
+    sub(jur_sec, "Jurisdiction", comp_iso)
 
     globe_tax  = sub(jur_sec, "GLoBETax")
     etr        = sub(globe_tax, "ETR")
@@ -630,9 +707,34 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     sub(ente, "UtilizedInRFY",    0)
     sub(ente, "Remaining",        0)
 
-    jur_doc = sub(jur_sec, "DocSpec")
-    ET.SubElement(jur_doc, S + "DocTypeIndic").text = doc_type_indic_sections
-    ET.SubElement(jur_doc, S + "DocRefId").text = f"{cfg['jurisdiction']}{year}-{str(uuid.uuid4())}"
+    add_docspec(jur_sec)
+
+    # ── Safe-harbour jurisdictions (every one except the computed jurisdiction,
+    #    which already has its full computation section above).
+    for sh in safe_harbours:
+        iso = sh.get("iso") or comp_iso
+        if iso == comp_iso:
+            continue
+        code   = sh["sh_code"]
+        sh_sec = sub(body, "JurisdictionSection")
+        sub(sh_sec, "RecJurCode",  iso)
+        sub(sh_sec, "Jurisdiction", iso)
+        gt = sub(sh_sec, "GLoBETax")
+        if code in CBCR_SH_CODES:
+            ex   = sub(sub(sub(gt, "ETR"), "ETRStatus"), "ETRException")
+            cbcr = sub(ex, "TransitionalCbCRSafeHarbour")   # order: Revenue, Profit, IncomeTax
+            if sh.get("revenue") is not None:
+                sub(cbcr, "Revenue", sh["revenue"])
+            sub(cbcr, "Profit", sh["profit"] if sh.get("profit") is not None else 0)
+            if sh.get("income_tax") is not None:
+                sub(cbcr, "IncomeTax", sh["income_tax"])
+        elif code in UTPR_SH_CODES:
+            ex   = sub(sub(sub(gt, "ETR"), "ETRStatus"), "ETRException")
+            utpr = sub(ex, "UTPRSafeHarbour")
+            rate = sh.get("cit_rate") or 0.0
+            sub(utpr, "CITRate", f"{max(0.0, min(1.0, float(rate))):.4f}")
+        # else GIR1201/1202/1207-1209: declaration lives in the Summary; GLoBETax stays empty.
+        add_docspec(sh_sec)
 
     ET.indent(root, space="  ")
     raw = ET.tostring(root, encoding="unicode")
@@ -872,6 +974,19 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
         "GLOBEBody/JurisdictionSection/GLoBETax/ETR/ETRStatus/ETRComputation")) is not None
     check(f"JurisdictionSection(s) present ({n_jur}) with an ETR computation", has_comp)
 
+    # Safe-harbour sections: each Summary must carry a SafeHarbour enum, and every
+    # Summary jurisdiction should have a matching JurisdictionSection.
+    summaries = findall("GLOBEBody/Summary")
+    sh_codes  = [s.find(N + "SafeHarbour") for s in summaries]
+    bad_sh    = [i + 1 for i, c in enumerate(sh_codes) if c is None or not (c.text or "").startswith("GIR12")]
+    jur_codes = {j.text for j in findall("GLOBEBody/JurisdictionSection/Jurisdiction") if j.text}
+    summ_jurs = {s.text for s in findall("GLOBEBody/Summary/Jurisdiction/JurisdictionName") if s.text}
+    unmatched = sorted(summ_jurs - jur_codes)
+    check(f"Safe-harbour Summaries ({len(summaries)}) valid & matched to a JurisdictionSection",
+          not bad_sh and not unmatched,
+          (f"bad SafeHarbour: {bad_sh}; " if bad_sh else "")
+          + (f"Summary with no JurisdictionSection: {', '.join(unmatched)}" if unmatched else ""))
+
     # All amounts are integers
     non_int = [el.text for el in root.findall(".//" + N + "Amount")
                if el.text and "." in el.text]
@@ -903,6 +1018,9 @@ T: dict[str, dict[str, str]] = {
     "ce_missing_warn":     {"EN": "⚠️ {} entity(ies) still without a TIN — ESTV will reject these (error 70006). Fill them above before submitting.",
                             "DE": "⚠️ {} Einheit(en) noch ohne UID/TIN — die ESTV weist diese zurück (Fehler 70006). Bitte oben ergänzen."},
     "ce_all_have_tin":     {"EN": "✅ All constituent entities have a TIN.", "DE": "✅ Alle Untereinheiten haben eine UID/TIN."},
+    "sh_title":            {"EN": "Safe-harbour jurisdictions", "DE": "Safe-Harbour-Jurisdiktionen"},
+    "sh_help":             {"EN": "{} jurisdiction(s) elect a safe harbour (from the 'Safe Harbours' tabs). Each becomes a Summary + JurisdictionSection. Empty tabs are ignored.",
+                            "DE": "{} Jurisdiktion(en) wählen einen Safe Harbour (aus den 'Safe Harbours'-Blättern). Jede wird zu Summary + JurisdictionSection. Leere Blätter werden ignoriert."},
     "step2":               {"EN": "2. Company details",                "DE": "2. Unternehmensangaben"},
     "company_name":        {"EN": "Company name",                      "DE": "Firmenname"},
     "tin":                 {"EN": "TIN",                               "DE": "UID/TIN"},
@@ -1232,6 +1350,7 @@ if uploaded is not None:
                 raise KeyError(f'{MNE_SHEET} / {COMP_SHEET}')
             _mne = read_mne_info(_wb)
             st.session_state["mne_entities"] = _mne["constituent_entities"]
+            st.session_state["safe_harbours"] = read_safe_harbours(_wb)
             mne_entities = _mne["constituent_entities"]
 
             def _opt(val, options, fallback):
@@ -1373,6 +1492,20 @@ if mne_entities:
     else:
         st.caption(T["ce_all_have_tin"][lang])
 
+# ── Safe-harbour jurisdictions (read-only summary of what will be emitted) ─────
+_safe_harbours = st.session_state.get("safe_harbours", [])
+if _safe_harbours:
+    st.markdown(f"**{T['sh_title'][lang]}**")
+    st.caption(T["sh_help"][lang].format(len(_safe_harbours)))
+    _sh_col = "Safe Harbour" if lang == "EN" else "Safe Harbour"
+    st.table([
+        {
+            T["ce_col_jur"][lang]: f"{sh.get('iso') or '?'} — {sh.get('name', '')}",
+            _sh_col: sh["sh_code"],
+        }
+        for sh in _safe_harbours
+    ])
+
 # ── Step 3: Export ────────────────────────────────────────────────────────────
 st.header(T["step3"][lang])
 st.write("")
@@ -1428,6 +1561,7 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     "upe_rules":       upe_rules,
                     "upe_globe_status": upe_globe_status,
                     "constituent_entities": ce_list,
+                    "safe_harbours":        parsed["safe_harbours"],
                 }
 
                 input_errors = validate_inputs(cfg)
@@ -1448,7 +1582,7 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                 cols[3].metric("ETR",              etr_val)
 
                 checks  = validate_xml(xml_str)
-                n_pass  = sum(1 for _, ok, _ in checks)
+                n_pass  = sum(1 for _, ok, _ in checks if ok)
                 n_total = len(checks)
                 all_ok  = n_pass == n_total
 

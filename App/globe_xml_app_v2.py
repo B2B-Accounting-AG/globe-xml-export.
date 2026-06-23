@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.4.0"
+VERSION = "2.4.4"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1277,12 +1277,12 @@ st.markdown("""
             radial-gradient(700px 500px at -5% 0%, rgba(31,38,46,.035), transparent 55%);
         background-attachment: fixed;
     }
-    .block-container { max-width: 880px; padding-top: 2.2rem; padding-bottom: 5rem; }
+    .block-container { max-width: 880px; padding-top: 5.4rem; padding-bottom: 5rem; }
 
     /* Hide Streamlit chrome for a product feel */
     #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
     [data-testid="stStatusWidget"] { display: none !important; }
-    [data-testid="stHeader"] { background: transparent; height: 0; }
+    [data-testid="stHeader"] { background: transparent; height: 0; pointer-events: none; }
 
     /* ── step cards: st.container(border=True, key="girc*") → portal .step ──── */
     /* Streamlit 1.57 renders the bordered container as a transparent stVerticalBlock;
@@ -1395,6 +1395,30 @@ st.markdown("""
     hr { border-color: var(--line) !important; }
     [data-testid="stCaptionContainer"], .stCaption { color: var(--slate-light) !important; }
     a { color: var(--red-dark); }
+
+    /* ── header bar: portal .site-header — FULL-WIDTH fixed white bar ───────── */
+    /* Pure-HTML bar (no Streamlit columns inside → layout can't break); the real
+       EN/DE radio is pinned into its right side via the st-key-girlang container. */
+    .gir-topbar {
+        position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+        background: var(--surface); border-bottom: 1px solid var(--line);
+        box-shadow: var(--shadow-sm); padding: 9px 0;
+        pointer-events: none;   /* let clicks pass through to the pinned EN/DE toggle */
+    }
+    .gir-topbar-inner {
+        max-width: 880px; margin: 0 auto; padding: 0 8px;
+        display: flex; align-items: center; gap: 22px;
+    }
+    .stApp [class*="st-key-girlang"] {
+        position: fixed; top: 11px; z-index: 2147483000;
+        right: max(12px, calc((100vw - 880px) / 2 + 8px));
+        width: auto !important;
+    }
+    .gir-title {
+        margin: 0; color: var(--ink); font-size: 1.15rem; font-weight: 700;
+        letter-spacing: -.01em; font-family: var(--font); white-space: nowrap;
+        border-left: 1px solid var(--line-strong); padding-left: 22px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -1431,22 +1455,21 @@ if _MME_LOGO_SVG:
 else:
     scaled_svg = ""
 
-hdr_left, hdr_right = st.columns([5, 1])
-with hdr_left:
-    st.markdown(
-        f"""<div style='display:flex; align-items:center; gap:24px; padding:12px 0 8px 0;'>
-            <div style='display:flex; flex-direction:column; align-items:flex-start;'>
-                <div>{scaled_svg}</div>
-                <span style='font-size:0.68rem; color:#6a7681; letter-spacing:0.03em; margin-top:3px;'>v{VERSION}</span>
-            </div>
-            <h1 style='margin:0; color:#313c45; font-size:1.4rem; font-weight:700;
-                font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;'>
-                GloBE Information Return (GIR)
-            </h1>
-        </div>""",
-        unsafe_allow_html=True,
-    )
-with hdr_right:
+# Full-width fixed top bar — pure HTML (no Streamlit columns inside, so the
+# language toggle can't disturb it). The real EN/DE radio below is CSS-pinned in.
+st.markdown(
+    f"""<div class='gir-topbar'><div class='gir-topbar-inner'>
+        <div style='display:flex; flex-direction:column; align-items:flex-start;'>
+            <div>{scaled_svg}</div>
+            <span style='font-size:0.64rem; color:#8a96a3; letter-spacing:0.04em; margin-top:2px;'>v{VERSION}</span>
+        </div>
+        <div class='gir-title'>GloBE Information Return (GIR)</div>
+    </div></div>""",
+    unsafe_allow_html=True,
+)
+
+_lang = st.container(key="girlang")
+with _lang:
     selected = st.radio(
         "lang", ["EN", "DE"],
         index=0 if lang == "EN" else 1,
@@ -1457,16 +1480,6 @@ with hdr_right:
     if selected != lang:
         st.session_state["lang"] = selected
         st.rerun()
-
-if _MUTARA_LOGO_B64:
-    st.markdown(
-        f"""<div style='display:flex; align-items:center; gap:10px; padding:6px 0 10px 0;'>
-            <span style='font-size:0.78rem; color:#6a7681;'>{T["in_coop"][lang]}</span>
-            <img src='data:image/png;base64,{_MUTARA_LOGO_B64}'
-                 style='height:18px; width:auto; opacity:0.85;'>
-        </div>""",
-        unsafe_allow_html=True,
-    )
 
 # ── Step 1: Upload ────────────────────────────────────────────────────────────
 _card1 = _card_open("girc1")

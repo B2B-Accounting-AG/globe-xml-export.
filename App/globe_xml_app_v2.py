@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.4.4"
+VERSION = "2.4.5"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1099,8 +1099,8 @@ T: dict[str, dict[str, str]] = {
     "gir502":              {"EN": "GIR502 — Combined Financial Statement (subparagraph b)",
                             "DE": "GIR502 — Kombinierter Abschluss (Buchstabe b)"},
     "gir503":              {"EN": "GIR503 — Other",                           "DE": "GIR503 — Sonstiges"},
-    "step3":               {"EN": "3. Export",                         "DE": "3. Export"},
-    "generate_btn":        {"EN": "Generate XML",                      "DE": "XML generieren"},
+    "step3":               {"EN": "3. Validate file",                  "DE": "3. Datei validieren"},
+    "generate_btn":        {"EN": "Validate file",                     "DE": "Datei validieren"},
     "upload_first":        {"EN": "Please upload an Excel file first.","DE": "Bitte laden Sie zuerst eine Excel-Datei hoch."},
     "spinner_gen":         {"EN": "Reading Excel and building XML…",   "DE": "Excel wird gelesen und XML wird erstellt…"},
     "upload_to_enable":    {"EN": "Upload the Excel file above to enable export.",
@@ -1112,22 +1112,22 @@ T: dict[str, dict[str, str]] = {
                             "DE": ("Beheben Sie die oben genannten Probleme und generieren Sie erneut. "
                                    "Sobald alle Prüfungen bestanden sind, validieren Sie gegen das offizielle ESTV XSD vor der Einreichung.")},
     "all_passed":          {"EN": "All structural checks passed.",     "DE": "Alle strukturellen Prüfungen bestanden."},
-    "download_blocked":    {"EN": "Download is disabled until all structural checks pass — fix the issues above and re-generate.",
-                            "DE": "Der Download ist deaktiviert, bis alle strukturellen Prüfungen bestanden sind — beheben Sie die Probleme oben und generieren Sie neu."},
-    "encrypt_blocked":     {"EN": "Encryption is disabled until the structural checks pass (Step 3).",
-                            "DE": "Die Verschlüsselung ist deaktiviert, bis die strukturellen Prüfungen bestanden sind (Schritt 3)."},
-    "download_xml":        {"EN": "⬇️  Download XML",                 "DE": "⬇️  XML herunterladen"},
+    "download_blocked":    {"EN": "Not all checks pass — fix the issues above and re-validate. The downloads stay disabled in Step 4.",
+                            "DE": "Nicht alle Prüfungen bestanden — beheben Sie die Probleme oben und validieren Sie erneut. Die Downloads bleiben in Schritt 4 deaktiviert."},
+    "encrypt_blocked":     {"EN": "The downloads are disabled until all structural checks pass (Step 3).",
+                            "DE": "Die Downloads sind deaktiviert, bis alle strukturellen Prüfungen bestanden sind (Schritt 3)."},
+    "download_xml":        {"EN": "Download raw XML",                  "DE": "Roh-XML herunterladen"},
     "preview_xml":         {"EN": "Preview XML",                       "DE": "XML-Vorschau"},
     "sheet_not_found":     {"EN": 'Required sheet(s) not found: {}. Use the OECD GIR template with "1 MNE Group Information" and "3 GloBE Computations".',
                             "DE": 'Erforderliche(s) Tabellenblatt/-blätter nicht gefunden: {}. Verwenden Sie die OECD-GIR-Vorlage mit "1 MNE Group Information" und "3 GloBE Computations".'},
     "error_msg":           {"EN": "Error: {}",                         "DE": "Fehler: {}"},
-    "step4":               {"EN": "4. Encrypt for ESTV",              "DE": "4. Verschlüsselung für ESTV"},
+    "step4":               {"EN": "4. Download for ESTV",             "DE": "4. Download für die ESTV"},
     "step4_caption":       {"EN": ("Upload the ESTV public key (ESTV-PublicKey.pem) from the myESTV portal. "
                                    "The app will produce an encrypted .zip ready to upload directly to the GIR-Applikation."),
                             "DE": ("Laden Sie den öffentlichen ESTV-Schlüssel (ESTV-PublicKey.pem) aus dem myESTV-Portal hoch. "
                                    "Die App erstellt eine verschlüsselte .zip-Datei, die direkt in die GIR-Applikation hochgeladen werden kann.")},
     "pem_label":           {"EN": "ESTV Public Key (.pem)",            "DE": "Öffentlicher ESTV-Schlüssel (.pem)"},
-    "encrypt_btn":         {"EN": "Encrypt & Download",               "DE": "Verschlüsseln & Herunterladen"},
+    "encrypt_btn":         {"EN": "Encrypt & download",               "DE": "Verschlüsseln & herunterladen"},
     "generate_first":      {"EN": "Generate the XML first (Step 3).", "DE": "Generieren Sie zuerst das XML (Schritt 3)."},
     "upload_pem":          {"EN": "Upload the ESTV public key (.pem) above.",
                             "DE": "Laden Sie oben den öffentlichen ESTV-Schlüssel (.pem) hoch."},
@@ -1138,8 +1138,8 @@ T: dict[str, dict[str, str]] = {
     "enc_failed":          {"EN": "Encryption failed: {}",            "DE": "Verschlüsselung fehlgeschlagen: {}"},
     "gen_first_long":      {"EN": "Generate the XML in Step 3 first, then encrypt here.",
                             "DE": "Generieren Sie zuerst das XML in Schritt 3, dann verschlüsseln Sie hier."},
-    "bundled_key_info":    {"EN": "Using bundled ESTV public key (encryptor.estv.admin.ch, valid until 2027-02-04).",
-                            "DE": "Verwendung des integrierten ESTV-Schlüssels (encryptor.estv.admin.ch, gültig bis 04.02.2027)."},
+    "bundled_key_info":    {"EN": "Using the bundled ESTV public key — the download is an encrypted .zip ready to upload to myESTV → GIR-Applikation.",
+                            "DE": "Mit dem integrierten öffentlichen ESTV-Schlüssel — der Download ist eine verschlüsselte .zip, bereit zum Hochladen in myESTV → GIR-Applikation."},
     "override_key":        {"EN": "Use a different key",              "DE": "Anderen Schlüssel verwenden"},
     "override_active":     {"EN": "Custom key active",                "DE": "Eigener Schlüssel aktiv"},
     "err_jurisdiction":    {"EN": "Jurisdiction must be exactly 2 uppercase letters (e.g. CH)",
@@ -1830,15 +1830,6 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                 else:
                     st.warning(T["download_blocked"][lang])
 
-                filename = st.session_state["xml_filename"]
-                st.download_button(
-                    label=T["download_xml"][lang],
-                    data=xml_str.encode("utf-8"),
-                    file_name=filename,
-                    mime="application/xml",
-                    disabled=not all_ok,
-                )
-
                 # Plain language summary
                 with st.expander(T["summary_label"][lang]):
                     C = cfg["currency"]
@@ -1953,11 +1944,23 @@ with st.expander(T["override_key"][lang]):
 
 pem_bytes_to_use = pem_override if pem_override else _BUNDLED_PEM
 
-if st.button(
-    T["encrypt_btn"][lang],
-    type="primary",
-    disabled=(not xml_ready or not validation_ok or pem_bytes_to_use is None),
-):
+_enc_col, _raw_col = st.columns([1, 1])
+with _enc_col:
+    _do_encrypt = st.button(
+        T["encrypt_btn"][lang],
+        type="primary",
+        disabled=(not xml_ready or not validation_ok or pem_bytes_to_use is None),
+    )
+with _raw_col:
+    st.download_button(
+        label=T["download_xml"][lang],
+        data=(st.session_state.get("xml_str", "") or "").encode("utf-8"),
+        file_name=st.session_state.get("xml_filename", "gir.xml"),
+        mime="application/xml",
+        disabled=(not xml_ready or not validation_ok),
+    )
+
+if _do_encrypt:
     if not xml_ready:
         st.error(T["generate_first"][lang])
     elif pem_bytes_to_use is None:

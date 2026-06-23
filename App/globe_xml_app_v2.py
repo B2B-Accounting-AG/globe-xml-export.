@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.3.6"
+VERSION = "2.4.0"
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1041,7 +1041,7 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
 # ─── TRANSLATIONS ────────────────────────────────────────────────────────────
 
 T: dict[str, dict[str, str]] = {
-    "step1":               {"EN": "1. Upload Excel file",              "DE": "1. Excel-Datei hochladen"},
+    "step1":               {"EN": "1. Upload GIR template",            "DE": "1. GIR-Vorlage hochladen"},
     "upload_label":        {"EN": "GIR Template (.xlsx or .xlsm)", "DE": "GIR-Vorlage (.xlsx oder .xlsm)"},
     "upload_help":         {"EN": 'OECD GIR template with sheets "1 MNE Group Information" and "3 GloBE Computations"',
                             "DE": 'OECD-GIR-Vorlage mit Tabellenblättern "1 MNE Group Information" und "3 GloBE Computations"'},
@@ -1063,7 +1063,7 @@ T: dict[str, dict[str, str]] = {
     "sh_title":            {"EN": "Safe-harbour jurisdictions", "DE": "Safe-Harbour-Jurisdiktionen"},
     "sh_help":             {"EN": "{} jurisdiction(s) elect a safe harbour (from the 'Safe Harbours' tabs). Each becomes a Summary + JurisdictionSection. Empty tabs are ignored.",
                             "DE": "{} Jurisdiktion(en) wählen einen Safe Harbour (aus den 'Safe Harbours'-Blättern). Jede wird zu Summary + JurisdictionSection. Leere Blätter werden ignoriert."},
-    "step2":               {"EN": "2. Company details",                "DE": "2. Unternehmensangaben"},
+    "step2":               {"EN": "2. Review company details",         "DE": "2. Unternehmensangaben prüfen"},
     "company_name":        {"EN": "Company name",                      "DE": "Firmenname"},
     "tin":                 {"EN": "TIN",                               "DE": "UID/TIN"},
     "tin_issued_by":       {"EN": "TIN issued by (ISO 3166-1 Alpha-2)","DE": "TIN ausgestellt von (ISO 3166-1 Alpha-2)"},
@@ -1112,6 +1112,10 @@ T: dict[str, dict[str, str]] = {
                             "DE": ("Beheben Sie die oben genannten Probleme und generieren Sie erneut. "
                                    "Sobald alle Prüfungen bestanden sind, validieren Sie gegen das offizielle ESTV XSD vor der Einreichung.")},
     "all_passed":          {"EN": "All structural checks passed.",     "DE": "Alle strukturellen Prüfungen bestanden."},
+    "download_blocked":    {"EN": "Download is disabled until all structural checks pass — fix the issues above and re-generate.",
+                            "DE": "Der Download ist deaktiviert, bis alle strukturellen Prüfungen bestanden sind — beheben Sie die Probleme oben und generieren Sie neu."},
+    "encrypt_blocked":     {"EN": "Encryption is disabled until the structural checks pass (Step 3).",
+                            "DE": "Die Verschlüsselung ist deaktiviert, bis die strukturellen Prüfungen bestanden sind (Schritt 3)."},
     "download_xml":        {"EN": "⬇️  Download XML",                 "DE": "⬇️  XML herunterladen"},
     "preview_xml":         {"EN": "Preview XML",                       "DE": "XML-Vorschau"},
     "sheet_not_found":     {"EN": 'Required sheet(s) not found: {}. Use the OECD GIR template with "1 MNE Group Information" and "3 GloBE Computations".',
@@ -1251,63 +1255,172 @@ lang = st.session_state["lang"]
 
 st.markdown("""
 <style>
-    html, body, [class*="css"] {
-        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    /* ── MME GIR — design tokens ported from the GIR Portal (portal.css) ───── */
+    :root {
+        --red: #e0303c; --red-dark: #c0272f; --red-tint: #fdeef0;
+        --ink: #1f262e; --slate: #5a6672; --slate-light: #8a96a3;
+        --line: #e4e9ef; --line-strong: #d2dae3;
+        --bg: #f6f8fb; --surface: #ffffff;
+        --green: #1f9d57; --green-tint: #e9f7ef;
+        --shadow-sm: 0 1px 2px rgba(31,38,46,.06), 0 1px 3px rgba(31,38,46,.04);
+        --shadow-md: 0 4px 16px rgba(31,38,46,.08), 0 2px 6px rgba(31,38,46,.05);
+        --radius: 12px; --radius-sm: 8px;
+        --font: "Helvetica Neue", Helvetica, "Segoe UI", Arial, sans-serif;
+    }
+    html, body, [class*="css"], .stApp { font-family: var(--font); color: var(--ink); }
+
+    /* App canvas: calm light surface with the portal's subtle radial wash */
+    .stApp, [data-testid="stAppViewContainer"] {
+        background: var(--bg);
+        background-image:
+            radial-gradient(900px 500px at 88% -8%, rgba(224,48,60,.06), transparent 60%),
+            radial-gradient(700px 500px at -5% 0%, rgba(31,38,46,.035), transparent 55%);
+        background-attachment: fixed;
+    }
+    .block-container { max-width: 880px; padding-top: 2.2rem; padding-bottom: 5rem; }
+
+    /* Hide Streamlit chrome for a product feel */
+    #MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"] { display: none !important; }
+    [data-testid="stHeader"] { background: transparent; height: 0; }
+
+    /* ── step cards: st.container(border=True, key="girc*") → portal .step ──── */
+    /* Streamlit 1.57 renders the bordered container as a transparent stVerticalBlock;
+       the stable st-key-* class lets us paint it white like the portal card. */
+    .stApp [class*="st-key-girc"] {
+        background: var(--surface) !important;
+        border: 1px solid var(--line) !important;
+        border-radius: var(--radius) !important;
+        box-shadow: var(--shadow-sm) !important;
+        padding: 22px 26px !important;
+        margin-bottom: 18px;
     }
 
-    /* Hide the radio label */
+    /* ── numbered step header (.step-head / .step-num / .step-title) ───────── */
+    .step-head { display: flex; align-items: center; gap: 13px; margin: 2px 0 16px; }
+    .step-num {
+        width: 30px; height: 30px; flex: none; border-radius: 50%;
+        background: var(--red); color: #fff; font-weight: 700; font-size: .9rem;
+        display: grid; place-items: center; box-shadow: 0 2px 6px rgba(224,48,60,.3);
+    }
+    .step-title { margin: 0; font-size: 1.06rem; font-weight: 700;
+        letter-spacing: -.01em; color: var(--ink); }
+
+    /* ── language toggle (radio → pills), aligned right ───────────────────── */
     div[data-testid="stRadio"] label { display: none; }
-
-    /* Style language radio as a pill toggle */
-    div[data-testid="stRadio"] > div {
-        display: flex; gap: 4px; justify-content: flex-end;
-    }
+    div[data-testid="stRadio"] > div { display: flex; gap: 4px; justify-content: flex-end; }
     div[data-testid="stRadio"] > div > label {
-        display: flex !important;
-        padding: 2px 10px;
-        border: 1px solid #e2eaf1;
-        border-radius: 20px;
-        font-size: 0.78rem;
-        font-weight: 600;
-        color: #6a7681;
-        cursor: pointer;
+        display: flex !important; padding: 4px 12px;
+        border: 1px solid var(--line-strong); border-radius: 20px;
+        font-size: .76rem; font-weight: 600; color: var(--slate); cursor: pointer;
+        transition: all .15s ease;
     }
+    div[data-testid="stRadio"] > div > label:hover { border-color: var(--red); color: var(--red); }
     div[data-testid="stRadio"] > div > label[data-checked="true"] {
-        background: #e0303c;
-        border-color: #e0303c;
-        color: white;
+        background: var(--red); border-color: var(--red); color: #fff;
     }
 
-    [data-testid="stHeader"] { background-color: #FFFFFF; }
-    [data-testid="stSidebar"] { background-color: #f5f9fc; }
-
-    .stButton > button[kind="primary"] {
-        background-color: #e0303c !important;
-        border: none !important;
-        color: white !important;
-        font-weight: 600 !important;
-        border-radius: 30px !important;
-        padding: 0.4rem 1.5rem !important;
+    /* ── buttons: portal pill buttons with shadow + disabled state ────────── */
+    .stButton > button[kind="primary"], .stDownloadButton > button {
+        background: var(--red) !important; border: none !important; color: #fff !important;
+        font-weight: 600 !important; border-radius: 30px !important;
+        padding: .55rem 1.5rem !important; box-shadow: 0 2px 8px rgba(224,48,60,.28) !important;
+        transition: background .15s ease, transform .08s ease !important;
     }
-    .stButton > button[kind="primary"]:hover { background-color: #c0272f !important; }
-
-    .stDownloadButton > button {
-        background-color: #e0303c !important;
-        border: none !important;
-        color: white !important;
-        font-weight: 600 !important;
-        border-radius: 30px !important;
-        width: 100%;
+    .stButton > button[kind="primary"]:hover, .stDownloadButton > button:hover {
+        background: var(--red-dark) !important;
     }
-    .stDownloadButton > button:hover { background-color: #c0272f !important; }
+    .stButton > button[kind="primary"]:active, .stDownloadButton > button:active {
+        transform: translateY(1px);
+    }
+    .stButton > button[kind="primary"]:disabled, .stDownloadButton > button:disabled {
+        background: #d7dde4 !important; color: #fff !important; box-shadow: none !important;
+        cursor: not-allowed; opacity: 1 !important;
+    }
+    .stDownloadButton > button { width: 100%; justify-content: center; }
 
-    h2 { color: #313c45 !important; border-bottom: 2px solid #e0303c; padding-bottom: 4px; }
-    [data-testid="stMetricValue"] { color: #e0303c !important; font-weight: 700; font-size: 1rem !important; }
-    [data-testid="stMetricLabel"] { font-size: 0.75rem !important; }
-    hr { border-color: #e2eaf1 !important; }
-    .stCaption { color: #6a7681 !important; }
+    /* ── inputs / selects: white surface + portal focus ring ──────────────── */
+    .stTextInput [data-baseweb="base-input"], .stTextInput input,
+    .stDateInput [data-baseweb="base-input"], .stDateInput input,
+    .stNumberInput [data-baseweb="base-input"],
+    .stSelectbox [data-baseweb="select"] > div,
+    .stMultiSelect [data-baseweb="select"] > div {
+        background: var(--surface) !important;
+        border-radius: var(--radius-sm) !important;
+    }
+    .stTextInput [data-baseweb="base-input"], .stDateInput [data-baseweb="base-input"],
+    .stSelectbox [data-baseweb="select"] > div {
+        border: 1px solid var(--line-strong) !important;
+    }
+    .stTextInput input:focus, .stDateInput input:focus {
+        border-color: var(--red) !important; box-shadow: 0 0 0 3px rgba(224,48,60,.12) !important;
+    }
+
+    /* ── file uploader → portal .dropzone (centered, icon, custom copy) ────── */
+    [data-testid="stFileUploaderDropzone"] {
+        display: flex !important; flex-direction: column !important;
+        align-items: center !important; justify-content: center !important;
+        gap: 8px; text-align: center; min-height: 150px;
+        border: 2px dashed var(--line-strong) !important; border-radius: var(--radius) !important;
+        background: #fbfcfe !important; padding: 28px 20px !important; transition: all .18s ease;
+    }
+    [data-testid="stFileUploaderDropzone"]:hover {
+        border-color: var(--red) !important; background: var(--red-tint) !important;
+    }
+    [data-testid="stFileUploaderDropzone"]::before {
+        content: "📄"; font-size: 2rem; line-height: 1; order: 0;
+    }
+    /* replace Streamlit's size line with the portal headline */
+    [data-testid="stFileUploaderDropzoneInstructions"] { order: 1; }
+    [data-testid="stFileUploaderDropzoneInstructions"] span { font-size: 0 !important; }
+    [data-testid="stFileUploaderDropzoneInstructions"] span::after {
+        content: "Drop your GIR template here, or click to browse";
+        font-size: .95rem; font-weight: 600; color: var(--ink);
+    }
+    [data-testid="stFileUploaderDropzone"] button {
+        order: 2; margin-top: 2px;
+        background: var(--surface) !important; color: var(--red-dark) !important;
+        border: 1px solid var(--line-strong) !important; border-radius: 20px !important;
+    }
+    [data-testid="stFileUploaderDropzone"] button:hover {
+        border-color: var(--red) !important; background: var(--red-tint) !important;
+    }
+
+    /* ── metrics / validation / misc ──────────────────────────────────────── */
+    [data-testid="stMetricValue"] { color: var(--red) !important; font-weight: 700; font-size: 1.05rem !important; }
+    [data-testid="stMetricLabel"] { font-size: .72rem !important; text-transform: uppercase;
+        letter-spacing: .05em; color: var(--slate-light) !important; }
+    [data-testid="stExpander"] details { border: 1px solid var(--line) !important;
+        border-radius: var(--radius-sm) !important; }
+    hr { border-color: var(--line) !important; }
+    [data-testid="stCaptionContainer"], .stCaption { color: var(--slate-light) !important; }
+    a { color: var(--red-dark); }
 </style>
 """, unsafe_allow_html=True)
+
+
+def step_header(num: int, title: str) -> None:
+    """Render a portal-style numbered step header (red circle + title).
+    Strips a leading 'N. ' from the translated section title to avoid a double number."""
+    clean = re.sub(r"^\s*\d+\.\s*", "", title)
+    st.markdown(
+        f"<div class='step-head'><div class='step-num'>{num}</div>"
+        f"<div class='step-title'>{clean}</div></div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _card_open(key: str):
+    """Open a bordered container (portal .step card) and make it the active target
+    without indenting the section body. The key yields a stable st-key-<key> class
+    that the CSS paints white. Closed with _card_close()."""
+    c = st.container(border=True, key=key)
+    c.__enter__()
+    return c
+
+
+def _card_close(c) -> None:
+    c.__exit__(None, None, None)
 
 # ── Header row: logo + title | language toggle ────────────────────────────────
 if _MME_LOGO_SVG:
@@ -1355,10 +1468,9 @@ if _MUTARA_LOGO_B64:
         unsafe_allow_html=True,
     )
 
-st.divider()
-
 # ── Step 1: Upload ────────────────────────────────────────────────────────────
-st.header(T["step1"][lang])
+_card1 = _card_open("girc1")
+step_header(1, T["step1"][lang])
 uploaded = st.file_uploader(
     T["upload_label"][lang],
     type=["xlsx", "xlsm"],
@@ -1421,8 +1533,11 @@ if uploaded is not None:
             logging.exception("Auto-fill from sheet 1 failed")
             st.warning(T["autofill_failed"][lang].format(e))
 
+_card_close(_card1)
+
 # ── Step 2: Company details ───────────────────────────────────────────────────
-st.header(T["step2"][lang])
+_card2 = _card_open("girc2")
+step_header(2, T["step2"][lang])
 if mne_entities:
     st.caption(T["ce_count"][lang].format(len(mne_entities)))
 
@@ -1592,8 +1707,11 @@ if _safe_harbours:
         (sh.get("iso") or "?") for sh in _safe_harbours if (sh.get("iso") or "?") not in _excluded
     ]
 
+_card_close(_card2)
+
 # ── Step 3: Export ────────────────────────────────────────────────────────────
-st.header(T["step3"][lang])
+_card3 = _card_open("girc3")
+step_header(3, T["step3"][lang])
 st.write("")
 
 def validate_inputs(cfg: dict) -> list[str]:
@@ -1677,6 +1795,7 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                 n_pass  = sum(1 for _, ok, _ in checks if ok)
                 n_total = len(checks)
                 all_ok  = n_pass == n_total
+                st.session_state["validation_ok"] = all_ok
 
                 with st.expander(
                     f"{'✅' if all_ok else '⚠️'}  {T['validation_title'][lang]} — "
@@ -1695,6 +1814,8 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
 
                 if all_ok:
                     st.success(T["all_passed"][lang])
+                else:
+                    st.warning(T["download_blocked"][lang])
 
                 filename = st.session_state["xml_filename"]
                 st.download_button(
@@ -1702,6 +1823,7 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     data=xml_str.encode("utf-8"),
                     file_name=filename,
                     mime="application/xml",
+                    disabled=not all_ok,
                 )
 
                 # Plain language summary
@@ -1791,11 +1913,14 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
 elif uploaded is None:
     st.info(T["upload_to_enable"][lang])
 
+_card_close(_card3)
+
 # ── Step 4: Encrypt for ESTV ──────────────────────────────────────────────────
-st.divider()
-st.header(T["step4"][lang])
+_card4 = _card_open("girc4")
+step_header(4, T["step4"][lang])
 
 xml_ready = "xml_str" in st.session_state
+validation_ok = st.session_state.get("validation_ok", False)
 
 # Determine which PEM to use
 pem_override = None
@@ -1818,7 +1943,7 @@ pem_bytes_to_use = pem_override if pem_override else _BUNDLED_PEM
 if st.button(
     T["encrypt_btn"][lang],
     type="primary",
-    disabled=(not xml_ready or pem_bytes_to_use is None),
+    disabled=(not xml_ready or not validation_ok or pem_bytes_to_use is None),
 ):
     if not xml_ready:
         st.error(T["generate_first"][lang])
@@ -1843,6 +1968,10 @@ if st.button(
 
 if not xml_ready:
     st.info(T["gen_first_long"][lang])
+elif not validation_ok:
+    st.warning(T["encrypt_blocked"][lang])
+
+_card_close(_card4)
 
 st.divider()
 with st.expander(T["disclaimer_label"][lang]):

@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.4.5"
+VERSION = "2.5.0"   # multi-jurisdiction: full-scope GloBE computation per jurisdiction
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -452,10 +452,16 @@ def read_mne_info(wb) -> dict:
     return mne
 
 
-def read_computation(wb) -> dict:
-    """Read the computed jurisdiction's ETR data from sheet 3 (col E, row-mapped)."""
-    ws = wb[COMP_SHEET]
+def _computation_sheets(wb) -> list:
+    """All sheet names holding a GloBE computation: the legacy single bare
+    '3 GloBE Computations' tab and/or the per-jurisdiction suffixed
+    '3 GloBE Computations XX' tabs (multi-jurisdiction templates)."""
+    return [n for n in wb.sheetnames
+            if n == COMP_SHEET or n.startswith(COMP_SHEET + " ")]
 
+
+def _read_computation_ws(ws) -> dict:
+    """Read one '3 GloBE Computations' worksheet (col E, row-mapped)."""
     data = {
         "jur_iso":            _iso_from_name(ws[NEW_JUR_NAME_CELL].value),
         "adjusted_fanil":     cell_int(ws, NEW_ROW_ADJUSTED_FANIL,   COMP_COL),
@@ -473,6 +479,25 @@ def read_computation(wb) -> dict:
         data["cov_tax_adj"].append((gir_code, cell_int(ws, row, COMP_COL)))
 
     return data
+
+
+def read_computation(wb) -> dict:
+    """Back-compat: read the first computation sheet as a single dict."""
+    return _read_computation_ws(wb[_computation_sheets(wb)[0]])
+
+
+def read_computations(wb) -> list:
+    """Read every computation sheet into a list — one full-scope GloBE
+    computation per jurisdiction. Supports both the single bare-named tab
+    (legacy single-jurisdiction template) and the per-jurisdiction suffixed
+    tabs. Tabs whose jurisdiction name (E10) is blank are unfilled and skipped."""
+    out = []
+    for name in _computation_sheets(wb):
+        d = _read_computation_ws(wb[name])
+        if not d["jur_iso"]:          # unfilled template tab → ignore
+            continue
+        out.append(d)
+    return out
 
 
 # ─── SAFE HARBOURS (sheet "2 Safe Harbours XX") ──────────────────────────────
@@ -533,17 +558,25 @@ def read_safe_harbours(wb) -> list:
 def read_excel_v2(file_bytes: bytes) -> dict:
     """Parse the 2026 multi-sheet GIR template → {'mne', 'data', 'safe_harbours'}."""
     wb = openpyxl.load_workbook(io.BytesIO(file_bytes), data_only=True)
-    missing = [s for s in (MNE_SHEET, COMP_SHEET) if s not in wb.sheetnames]
-    if missing:
-        raise KeyError(", ".join(missing))
+    if MNE_SHEET not in wb.sheetnames:
+        raise KeyError(MNE_SHEET)
+    comps = read_computations(wb)
+    if not comps:
+        raise KeyError(COMP_SHEET)
     return {
         "mne":           read_mne_info(wb),
-        "data":          read_computation(wb),
+        "computations":  comps,        # one full-scope computation per jurisdiction
+        "data":          comps[0],     # back-compat single-jurisdiction reference
         "safe_harbours": read_safe_harbours(wb),
     }
 
 
-def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
+def build_xml(computations, cfg: dict, test_mode: bool = False) -> str:
+    # Accept a single computation dict (legacy single-jurisdiction call) or a
+    # list of computations (multi-jurisdiction template → one JurisdictionSection
+    # with a full ETR computation per jurisdiction).
+    if isinstance(computations, dict):
+        computations = [computations]
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
     year = cfg["period_end"][:4]
     msg_ref = f"{cfg['jurisdiction']}{year}{cfg['jurisdiction']}{str(uuid.uuid4())}"
@@ -654,14 +687,17 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
     # ── Summaries — one per safe-harbour jurisdiction. Per GLOBEBody ordering, ALL
     #    Summary elements come after GeneralSection and before any JurisdictionSection.
     safe_harbours = cfg.get("safe_harbours", [])
-    comp_iso = data.get("jur_iso") or cfg["jurisdiction"]
+    comp_isos        = [(c.get("jur_iso") or cfg["jurisdiction"]) for c in computations]
+    comp_iso_set     = set(comp_isos)
+    comp_by_iso      = {iso: c for iso, c in zip(comp_isos, computations)}
+    comp_iso_default = comp_isos[0]
     # RecJurCode = the recipient/partner jurisdiction (CH for a domestic filing). Per
     # ESTV rule 98201 every section's RecJurCode must also appear in the GeneralSection,
     # which carries only this code — so all sections share it. The section's *own*
     # jurisdiction is reported via the Jurisdiction element, not RecJurCode.
     rec_jur = cfg["rec_jur_code"]
     for sh in safe_harbours:
-        iso  = sh.get("iso") or comp_iso
+        iso  = sh.get("iso") or comp_iso_default
         summ = sub(body, "Summary")
         sub(summ, "RecJurCode", rec_jur)
         sub(sub(summ, "Jurisdiction"), "JurisdictionName", iso)
@@ -672,8 +708,9 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
         if sh["sh_code"] == "GIR1202":                    # ETRRange → SBIE → QDMTTut → GLoBETut
             # ESTV rule 70043: a GIR1202 (QDMTT SH) Summary with JurWithTaxingRights
             # must also carry ETRRange, SBIE and QDMTTut.
-            if iso == comp_iso and data.get("net_globe_income"):
-                _r = max(0.0, min(1.0, data["adjusted_cov_tax"] / data["net_globe_income"]))
+            if iso in comp_by_iso and comp_by_iso[iso].get("net_globe_income"):
+                _d = comp_by_iso[iso]
+                _r = max(0.0, min(1.0, _d["adjusted_cov_tax"] / _d["net_globe_income"]))
                 _band = f"GIR13{min(13, int(_r / 0.025) + 1):02d}"   # 2.5% bands; ≥30% → GIR1313
             else:
                 _band = "GIR1314"                         # Section 3.2 not completed
@@ -685,66 +722,71 @@ def build_xml(data: dict, cfg: dict, test_mode: bool = False) -> str:
         sub(summ, "GLoBETut", "GIR1501")                  # safe harbour ⇒ GloBE top-up tax = 0
         add_docspec(summ)
 
-    # ── Computed jurisdiction (sheet 3) — full ETR computation (Phase 1, unchanged).
-    jur_sec = sub(body, "JurisdictionSection")
-    sub(jur_sec, "RecJurCode",  rec_jur)
-    sub(jur_sec, "Jurisdiction", comp_iso)
+    # ── Computed jurisdictions (sheet 3) — one full ETR computation per jurisdiction.
+    #    A single-jurisdiction template yields one section; the multi-jurisdiction
+    #    template (no safe harbours) yields one full JurisdictionSection per jurisdiction.
+    for data in computations:
+        comp_iso = data.get("jur_iso") or cfg["jurisdiction"]
+        jur_sec = sub(body, "JurisdictionSection")
+        sub(jur_sec, "RecJurCode",  rec_jur)
+        sub(jur_sec, "Jurisdiction", comp_iso)
 
-    globe_tax  = sub(jur_sec, "GLoBETax")
-    etr        = sub(globe_tax, "ETR")
-    etr_status = sub(etr, "ETRStatus")
-    etr_comp   = sub(etr_status, "ETRComputation")
-    oc         = sub(etr_comp, "OverallComputation")
+        globe_tax  = sub(jur_sec, "GLoBETax")
+        etr        = sub(globe_tax, "ETR")
+        etr_status = sub(etr, "ETRStatus")
+        etr_comp   = sub(etr_status, "ETRComputation")
+        oc         = sub(etr_comp, "OverallComputation")
 
-    sub(oc, "FANIL",         data["adjusted_fanil"])
-    sub(oc, "AdjustedFANIL", data["adjusted_fanil"])
+        sub(oc, "FANIL",         data["adjusted_fanil"])
+        sub(oc, "AdjustedFANIL", data["adjusted_fanil"])
 
-    ngi = sub(oc, "NetGlobeIncome")
-    sub(ngi, "Total", data["net_globe_income"])
-    for gir_code, amount in data["income_adj"]:
-        if amount != 0:
-            adj = sub(ngi, "Adjustments")
-            sub(adj, "Amount",         amount)
-            sub(adj, "AdjustmentItem", gir_code)
+        ngi = sub(oc, "NetGlobeIncome")
+        sub(ngi, "Total", data["net_globe_income"])
+        for gir_code, amount in data["income_adj"]:
+            if amount != 0:
+                adj = sub(ngi, "Adjustments")
+                sub(adj, "Amount",         amount)
+                sub(adj, "AdjustmentItem", gir_code)
 
-    sub(oc, "IncomeTaxExpense",    data["aggregate_curr_tax"])
-    sub(oc, "ETRRate",             fmt_etr(data["adjusted_cov_tax"], data["net_globe_income"]))
-    sub(oc, "TopUpTaxPercentage",  "0.0000")
+        sub(oc, "IncomeTaxExpense",    data["aggregate_curr_tax"])
+        sub(oc, "ETRRate",             fmt_etr(data["adjusted_cov_tax"], data["net_globe_income"]))
+        sub(oc, "TopUpTaxPercentage",  "0.0000")
 
-    act = sub(oc, "AdjustedCoveredTax")
-    sub(act, "Total",                data["adjusted_cov_tax"])
-    sub(act, "AggregrateCurrentTax", data["aggregate_curr_tax"])
-    for gir_code, amount in data["cov_tax_adj"]:
-        if amount != 0:
-            adj = sub(act, "Adjustments")
-            sub(adj, "Amount",         amount)
-            sub(adj, "AdjustmentItem", gir_code)
+        act = sub(oc, "AdjustedCoveredTax")
+        sub(act, "Total",                data["adjusted_cov_tax"])
+        sub(act, "AggregrateCurrentTax", data["aggregate_curr_tax"])
+        for gir_code, amount in data["cov_tax_adj"]:
+            if amount != 0:
+                adj = sub(act, "Adjustments")
+                sub(adj, "Amount",         amount)
+                sub(adj, "AdjustmentItem", gir_code)
 
-    # ExcessProfits = NetGlobeIncome - SubstanceExclusion (SBIE=0 for CH QDMTT)
-    sub(oc, "ExcessProfits", data["net_globe_income"])
+        # ExcessProfits = NetGlobeIncome - SubstanceExclusion (SBIE=0; revisit per
+        # jurisdiction once real SBIE figures are provided — see fix-later note).
+        sub(oc, "ExcessProfits", data["net_globe_income"])
 
-    qdmtt = sub(oc, "QDMTT")
-    sub(qdmtt, "FAS",            cfg["fas"])
-    sub(qdmtt, "Amount",         data["adjusted_cov_tax"])
-    sub(qdmtt, "SBIEAvailable",  "false")
-    sub(qdmtt, "DeMinAvailable", "false")
-    sub(qdmtt, "Currency",       cfg["currency"])
+        qdmtt = sub(oc, "QDMTT")
+        sub(qdmtt, "FAS",            cfg["fas"])
+        sub(qdmtt, "Amount",         data["adjusted_cov_tax"])
+        sub(qdmtt, "SBIEAvailable",  "false")
+        sub(qdmtt, "DeMinAvailable", "false")
+        sub(qdmtt, "Currency",       cfg["currency"])
 
-    sub(oc, "TopUpTax", 0)
+        sub(oc, "TopUpTax", 0)
 
-    ente = sub(oc, "ExcessNegTaxExpense")
-    sub(ente, "PriorYearBalance", 0)
-    sub(ente, "GeneratedInRFY",   0)
-    sub(ente, "UtilizedInRFY",    0)
-    sub(ente, "Remaining",        0)
+        ente = sub(oc, "ExcessNegTaxExpense")
+        sub(ente, "PriorYearBalance", 0)
+        sub(ente, "GeneratedInRFY",   0)
+        sub(ente, "UtilizedInRFY",    0)
+        sub(ente, "Remaining",        0)
 
-    add_docspec(jur_sec)
+        add_docspec(jur_sec)
 
     # ── Safe-harbour jurisdictions (every one except the computed jurisdiction,
     #    which already has its full computation section above).
     for sh in safe_harbours:
-        iso = sh.get("iso") or comp_iso
-        if iso == comp_iso:
+        iso = sh.get("iso") or comp_iso_default
+        if iso in comp_iso_set:
             continue
         code   = sh["sh_code"]
         sh_sec = sub(body, "JurisdictionSection")
@@ -1517,7 +1559,7 @@ if uploaded is not None:
     if st.session_state.get("_loaded_sig") != _sig:
         try:
             _wb = openpyxl.load_workbook(io.BytesIO(_file_bytes), data_only=True)
-            if MNE_SHEET not in _wb.sheetnames or COMP_SHEET not in _wb.sheetnames:
+            if MNE_SHEET not in _wb.sheetnames or not _computation_sheets(_wb):
                 raise KeyError(f'{MNE_SHEET} / {COMP_SHEET}')
             _mne = read_mne_info(_wb)
             st.session_state["mne_entities"] = _mne["constituent_entities"]
@@ -1757,7 +1799,8 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
             try:
                 file_bytes = uploaded.getvalue()
                 parsed = read_excel_v2(file_bytes)
-                data   = parsed["data"]
+                computations = parsed["computations"]
+                data   = parsed["data"]      # first computation (single-jur back-compat)
                 # Use the (possibly TIN-edited) entities from the in-app table,
                 # falling back to the freshly parsed list.
                 ce_list = edited_entities or parsed["mne"]["constituent_entities"]
@@ -1793,16 +1836,18 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                         st.error(err)
                     st.stop()
 
-                xml_str = build_xml(data, cfg, test_mode=(submission_mode == "test"))
+                xml_str = build_xml(computations, cfg, test_mode=(submission_mode == "test"))
                 st.session_state["xml_str"]      = xml_str
                 st.session_state["xml_filename"] = f"gir_{period_end[:4]}_{jurisdiction}.xml"
 
-                etr_val = fmt_etr(data["adjusted_cov_tax"], data["net_globe_income"])
-                cols = st.columns(4)
-                cols[0].metric("AdjustedFANIL",  f"{data['adjusted_fanil']:,}")
-                cols[1].metric("NetGlobeIncome",  f"{data['net_globe_income']:,}")
-                cols[2].metric("AdjustedCovTax",  f"{data['adjusted_cov_tax']:,}")
-                cols[3].metric("ETR",              etr_val)
+                for _d in computations:
+                    if len(computations) > 1:
+                        st.markdown(f"**{_d.get('jur_iso') or jurisdiction}**")
+                    cols = st.columns(4)
+                    cols[0].metric("AdjustedFANIL",  f"{_d['adjusted_fanil']:,}")
+                    cols[1].metric("NetGlobeIncome",  f"{_d['net_globe_income']:,}")
+                    cols[2].metric("AdjustedCovTax",  f"{_d['adjusted_cov_tax']:,}")
+                    cols[3].metric("ETR",             fmt_etr(_d["adjusted_cov_tax"], _d["net_globe_income"]))
 
                 checks  = validate_xml(xml_str)
                 n_pass  = sum(1 for _, ok, _ in checks if ok)
@@ -1857,52 +1902,60 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     _row(T["sum_role"][lang],        cfg["reporting_role"])
                     _row(T["sum_partner"][lang],     cfg["rec_jur_code"])
 
-                    st.markdown("---")
-                    st.markdown(f"**{T['sum_income'][lang]}**")
-                    _row(T["sum_fanil"][lang], f"{data['adjusted_fanil']:,} {C}")
-
-                    nz_income = [(code, amt) for code, amt in data["income_adj"] if amt != 0]
-                    if nz_income:
-                        st.caption(T["sum_income_adj"][lang])
-                        for code, amt in nz_income:
-                            desc = GIR_INCOME_LABELS.get(code, code)
-                            ca, cb = st.columns([2, 3])
-                            ca.markdown(
-                                f"<span style='color:#6a7681;font-size:0.78rem;'>{code} — {desc}</span>",
+                    for data in computations:
+                        if len(computations) > 1:
+                            st.markdown(
+                                f"<div style='margin-top:8px;font-weight:700;color:#e0303c;"
+                                f"font-size:0.9rem;'>{data.get('jur_iso') or cfg['jurisdiction']}</div>",
                                 unsafe_allow_html=True,
                             )
-                            cb.markdown(
-                                f"<span style='font-size:0.78rem;'>{amt:,} {C}</span>",
-                                unsafe_allow_html=True,
-                            )
+                        st.markdown("---")
+                        st.markdown(f"**{T['sum_income'][lang]}**")
+                        _row(T["sum_fanil"][lang], f"{data['adjusted_fanil']:,} {C}")
 
-                    _row(T["sum_net_income"][lang], f"{data['net_globe_income']:,} {C}", bold=True)
+                        nz_income = [(code, amt) for code, amt in data["income_adj"] if amt != 0]
+                        if nz_income:
+                            st.caption(T["sum_income_adj"][lang])
+                            for code, amt in nz_income:
+                                desc = GIR_INCOME_LABELS.get(code, code)
+                                ca, cb = st.columns([2, 3])
+                                ca.markdown(
+                                    f"<span style='color:#6a7681;font-size:0.78rem;'>{code} — {desc}</span>",
+                                    unsafe_allow_html=True,
+                                )
+                                cb.markdown(
+                                    f"<span style='font-size:0.78rem;'>{amt:,} {C}</span>",
+                                    unsafe_allow_html=True,
+                                )
 
-                    st.markdown("---")
-                    st.markdown(f"**{T['sum_tax'][lang]}**")
-                    _row(T["sum_curr_tax"][lang], f"{data['aggregate_curr_tax']:,} {C}")
+                        _row(T["sum_net_income"][lang], f"{data['net_globe_income']:,} {C}", bold=True)
 
-                    nz_tax = [(code, amt) for code, amt in data["cov_tax_adj"] if amt != 0]
-                    if nz_tax:
-                        st.caption(T["sum_tax_adj"][lang])
-                        for code, amt in nz_tax:
-                            desc = GIR_TAX_LABELS.get(code, code)
-                            ca, cb = st.columns([2, 3])
-                            ca.markdown(
-                                f"<span style='color:#6a7681;font-size:0.78rem;'>{code} — {desc}</span>",
-                                unsafe_allow_html=True,
-                            )
-                            cb.markdown(
-                                f"<span style='font-size:0.78rem;'>{amt:,} {C}</span>",
-                                unsafe_allow_html=True,
-                            )
+                        st.markdown("---")
+                        st.markdown(f"**{T['sum_tax'][lang]}**")
+                        _row(T["sum_curr_tax"][lang], f"{data['aggregate_curr_tax']:,} {C}")
 
-                    _row(T["sum_adj_tax"][lang], f"{data['adjusted_cov_tax']:,} {C}", bold=True)
+                        nz_tax = [(code, amt) for code, amt in data["cov_tax_adj"] if amt != 0]
+                        if nz_tax:
+                            st.caption(T["sum_tax_adj"][lang])
+                            for code, amt in nz_tax:
+                                desc = GIR_TAX_LABELS.get(code, code)
+                                ca, cb = st.columns([2, 3])
+                                ca.markdown(
+                                    f"<span style='color:#6a7681;font-size:0.78rem;'>{code} — {desc}</span>",
+                                    unsafe_allow_html=True,
+                                )
+                                cb.markdown(
+                                    f"<span style='font-size:0.78rem;'>{amt:,} {C}</span>",
+                                    unsafe_allow_html=True,
+                                )
 
-                    st.markdown("---")
-                    st.markdown(f"**{T['sum_result'][lang]}**")
-                    etr_pct = float(etr_val) * 100
-                    _row(T["sum_etr"][lang], f"{etr_val} ({etr_pct:.2f}%)", bold=True)
+                        _row(T["sum_adj_tax"][lang], f"{data['adjusted_cov_tax']:,} {C}", bold=True)
+
+                        st.markdown("---")
+                        st.markdown(f"**{T['sum_result'][lang]}**")
+                        _etr    = fmt_etr(data["adjusted_cov_tax"], data["net_globe_income"])
+                        etr_pct = float(_etr) * 100
+                        _row(T["sum_etr"][lang], f"{_etr} ({etr_pct:.2f}%)", bold=True)
 
                 with st.expander(T["preview_xml"][lang]):
                     st.code(xml_str, language="xml")

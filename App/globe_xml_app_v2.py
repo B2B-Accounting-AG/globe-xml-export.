@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.5.0"   # multi-jurisdiction: full-scope GloBE computation per jurisdiction
+VERSION = "2.6.0"   # X5/stateless ResCountryCode fix + ESTV 70012 & submission-mode validation checks
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -341,7 +341,11 @@ def _iso_from_name(name) -> str | None:
     if not name:
         return None
     s = str(name).strip()
-    if re.fullmatch(r"[A-Z]{2}", s):           # already an ISO code
+    # ISO 3166-1 alpha-2 (two letters) OR an OECD GloBE special code such as
+    # X5 = Stateless (schema isoglobetypes allows X-series). Without the digit
+    # branch, "X5" failed the match, returned None, and stateless PEs silently
+    # fell back to the filing jurisdiction (causing an ESTV 70012 Rules mismatch).
+    if re.fullmatch(r"[A-Z][A-Z0-9]", s):
         return s
     return _NAME_TO_ISO.get(s.lower())
 
@@ -1076,6 +1080,39 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
                if el.text and "." in el.text]
     check("All amounts are integers (no decimals)", not non_int,
           f"Non-integer: {non_int[:3]}" if non_int else "")
+
+    # ESTV 70012 — every entity resident in the same jurisdiction must carry the
+    # SAME Rules value. A mixed jurisdiction (e.g. UPE GIR202 + CE GIR205) is the
+    # exact rejection we hit; the file was only accepted once every CH entity
+    # shared one Rules value. (Treated as strict-uniform — a false warning here is
+    # far cheaper than a production rejection with no test portal to fall back on.)
+    rules_by_jur: dict = {}
+    corp_ids = (findall("GLOBEBody/GeneralSection/CorporateStructure/UPE/OtherUPE/ID")
+                + findall("GLOBEBody/GeneralSection/CorporateStructure/UPE/ExcludedUPE/ID")
+                + findall("GLOBEBody/GeneralSection/CorporateStructure/CE/ID"))
+    for idel in corp_ids:
+        res = idel.find(N + "ResCountryCode")
+        rul = idel.find(N + "Rules")
+        if res is not None and res.text and rul is not None and rul.text:
+            rules_by_jur.setdefault(res.text, set()).add(rul.text)
+    mixed = {j: sorted(v) for j, v in rules_by_jur.items() if len(v) > 1}
+    check("Same-jurisdiction Rules consistency (ESTV 70012)",
+          not mixed,
+          "; ".join(f"{j}: {', '.join(v)}" for j, v in mixed.items()) if mixed else "")
+
+    # Submission-mode reminder — surfaces TEST vs PRODUCTION so a test-indicator
+    # file is not uploaded to the production endpoint (ESTV 50009). Non-gating.
+    _dti_el = root.find(_nsp("GLOBEBody/FilingInfo/DocSpec") + "/" + S + "DocTypeIndic")
+    _dti = _dti_el.text if _dti_el is not None else None
+    if _dti in ("OECD10", "OECD11"):
+        _mode = "TEST (%s)" % _dti
+    elif _dti in ("OECD0", "OECD1", "OECD2", "OECD3"):
+        _mode = "PRODUCTION (%s)" % _dti
+    else:
+        _mode = "unknown (%s)" % _dti
+    check("Submission mode = %s" % _mode, True,
+          "Test file — only upload to the test portal; for production regenerate in Production mode."
+          if "TEST" in _mode else "")
 
     return results
 

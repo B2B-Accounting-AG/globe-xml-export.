@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.6.1"   # loud TEST-mode banner under the toggle + advisory ⚠️ rows in validation panel
+VERSION = "2.6.2"   # fix: only the test-mode row is an advisory ⚠️ (2.6.1 falsely flagged every passing check that carried a value)
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -871,12 +871,15 @@ def encrypt_for_estv(xml_str: str, pem_bytes: bytes) -> bytes:
 
 # ─── VALIDATION ──────────────────────────────────────────────────────────────
 
-def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
-    """Returns list of (label, passed, detail) tuples."""
+def validate_xml(xml_str: str) -> list[tuple[str, bool, str, bool]]:
+    """Returns list of (label, passed, detail, warn) tuples."""
     results = []
 
-    def check(label, passed, detail=""):
-        results.append((label, passed, detail))
+    def check(label, passed, detail="", warn=False):
+        # warn=True marks a non-gating advisory (passes, but shown as ⚠️ + detail
+        # rather than a silent green ✅). detail on a plain passing check is just
+        # informational and stays hidden.
+        results.append((label, passed, detail, warn))
 
     # 1. Well-formed XML
     try:
@@ -1112,7 +1115,8 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
         _mode = "unknown (%s)" % _dti
     check("Submission mode = %s" % _mode, True,
           "Test file — only upload to the test portal; for production regenerate in Production mode."
-          if "TEST" in _mode else "")
+          if "TEST" in _mode else "",
+          warn=("TEST" in _mode))
 
     return results
 
@@ -1891,10 +1895,10 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     cols[3].metric("ETR",             fmt_etr(_d["adjusted_cov_tax"], _d["net_globe_income"]))
 
                 checks  = validate_xml(xml_str)
-                n_pass  = sum(1 for _, ok, _ in checks if ok)
+                n_pass  = sum(1 for _, ok, _, _ in checks if ok)
                 n_total = len(checks)
                 all_ok  = n_pass == n_total
-                has_advisory = any(ok and detail for _, ok, detail in checks)
+                has_advisory = any(warn for _, _, _, warn in checks)
                 st.session_state["validation_ok"] = all_ok
 
                 with st.expander(
@@ -1902,17 +1906,17 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     f"{n_pass}/{n_total} {T['checks_passed'][lang]}",
                     expanded=not all_ok or has_advisory,
                 ):
-                    for label, ok, detail in checks:
-                        # A passed check that still carries a detail is an advisory
-                        # warning (e.g. test-mode reminder) — show it as ⚠️ + text,
-                        # not a silent green ✅ that buries the note.
-                        if ok and detail:
+                    for label, ok, detail, warn in checks:
+                        # warn = non-gating advisory (e.g. test-mode) → ⚠️ + detail.
+                        # A failed check → ❌ + detail. A plain passing check → ✅
+                        # only; its detail (the parsed value) stays hidden.
+                        if warn:
                             icon = "⚠️"
                         elif ok:
                             icon = "✅"
                         else:
                             icon = "❌"
-                        if detail:
+                        if detail and (warn or not ok):
                             st.markdown(f"{icon} &nbsp; **{label}**  \n"
                                         f"&nbsp;&nbsp;&nbsp;&nbsp;`{detail}`")
                         else:

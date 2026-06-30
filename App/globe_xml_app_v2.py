@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.6.0"   # X5/stateless ResCountryCode fix + ESTV 70012 & submission-mode validation checks
+VERSION = "2.6.1"   # loud TEST-mode banner under the toggle + advisory ⚠️ rows in validation panel
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1168,6 +1168,8 @@ T: dict[str, dict[str, str]] = {
     "mode_test":           {"EN": "Test / CTS (OECD11)",                     "DE": "Test / CTS (OECD11)"},
     "mode_help":           {"EN": "Use Test/CTS for the acceptance portal (eportal-a.admin.ch). Use Production for the live portal (eportal.admin.ch).",
                             "DE": "Test/CTS für das Abnahmeportal (eportal-a.admin.ch), Produktion für das Live-Portal (eportal.admin.ch)."},
+    "mode_test_banner":    {"EN": "⚠️ TEST mode (OECD11) — this file is for the acceptance portal (eportal-a.admin.ch) only. Do NOT upload it to the live production portal. Switch to Production (OECD1) before the real filing.",
+                            "DE": "⚠️ TEST-Modus (OECD11) — diese Datei ist nur für das Abnahmeportal (eportal-a.admin.ch). NICHT ins Live-Produktionsportal hochladen. Vor der echten Einreichung auf Produktion (OECD1) wechseln."},
     "gir401":              {"EN": "GIR401 — Ultimate Parent Entity (UPE)",    "DE": "GIR401 — Oberste Muttergesellschaft (UPE)"},
     "gir402":              {"EN": "GIR402 — Designated Filing Entity (DFE)",  "DE": "GIR402 — Benannte Einreichungsstelle (DFE)"},
     "gir404":              {"EN": "GIR404 — Constituent Entity (CE)",         "DE": "GIR404 — Untereinheit (CE)"},
@@ -1713,6 +1715,8 @@ with st.expander(T["advanced"][lang]):
         help=T["mode_help"][lang],
         horizontal=True,
     )
+    if submission_mode == "test":
+        st.warning(T["mode_test_banner"][lang])
 
 # ── Constituent-entity TIN editor (fill missing TINs in-app) ──────────────────
 # `edited_entities` is what build_xml uses; edits here override the Excel.
@@ -1890,16 +1894,25 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                 n_pass  = sum(1 for _, ok, _ in checks if ok)
                 n_total = len(checks)
                 all_ok  = n_pass == n_total
+                has_advisory = any(ok and detail for _, ok, detail in checks)
                 st.session_state["validation_ok"] = all_ok
 
                 with st.expander(
-                    f"{'✅' if all_ok else '⚠️'}  {T['validation_title'][lang]} — "
+                    f"{'⚠️' if (not all_ok or has_advisory) else '✅'}  {T['validation_title'][lang]} — "
                     f"{n_pass}/{n_total} {T['checks_passed'][lang]}",
-                    expanded=not all_ok,
+                    expanded=not all_ok or has_advisory,
                 ):
                     for label, ok, detail in checks:
-                        icon = "✅" if ok else "❌"
-                        if detail and not ok:
+                        # A passed check that still carries a detail is an advisory
+                        # warning (e.g. test-mode reminder) — show it as ⚠️ + text,
+                        # not a silent green ✅ that buries the note.
+                        if ok and detail:
+                            icon = "⚠️"
+                        elif ok:
+                            icon = "✅"
+                        else:
+                            icon = "❌"
+                        if detail:
                             st.markdown(f"{icon} &nbsp; **{label}**  \n"
                                         f"&nbsp;&nbsp;&nbsp;&nbsp;`{detail}`")
                         else:

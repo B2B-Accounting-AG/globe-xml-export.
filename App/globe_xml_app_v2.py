@@ -31,7 +31,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.6.2"   # fix: only the test-mode row is an advisory ⚠️ (2.6.1 falsely flagged every passing check that carried a value)
+VERSION = "2.6.3"   # test/prod is not a file-validation point → moved to a Step 2 ⚠️ Testmode badge; validation panel back to pure ✅/❌
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -871,15 +871,14 @@ def encrypt_for_estv(xml_str: str, pem_bytes: bytes) -> bytes:
 
 # ─── VALIDATION ──────────────────────────────────────────────────────────────
 
-def validate_xml(xml_str: str) -> list[tuple[str, bool, str, bool]]:
-    """Returns list of (label, passed, detail, warn) tuples."""
+def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
+    """Returns list of (label, passed, detail) tuples. File-validity only —
+    submission mode (test/prod) is NOT a file-validation point and is surfaced
+    separately as a badge on the Step 2 header + a banner at the mode toggle."""
     results = []
 
-    def check(label, passed, detail="", warn=False):
-        # warn=True marks a non-gating advisory (passes, but shown as ⚠️ + detail
-        # rather than a silent green ✅). detail on a plain passing check is just
-        # informational and stays hidden.
-        results.append((label, passed, detail, warn))
+    def check(label, passed, detail=""):
+        results.append((label, passed, detail))
 
     # 1. Well-formed XML
     try:
@@ -1103,21 +1102,6 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str, bool]]:
           not mixed,
           "; ".join(f"{j}: {', '.join(v)}" for j, v in mixed.items()) if mixed else "")
 
-    # Submission-mode reminder — surfaces TEST vs PRODUCTION so a test-indicator
-    # file is not uploaded to the production endpoint (ESTV 50009). Non-gating.
-    _dti_el = root.find(_nsp("GLOBEBody/FilingInfo/DocSpec") + "/" + S + "DocTypeIndic")
-    _dti = _dti_el.text if _dti_el is not None else None
-    if _dti in ("OECD10", "OECD11"):
-        _mode = "TEST (%s)" % _dti
-    elif _dti in ("OECD0", "OECD1", "OECD2", "OECD3"):
-        _mode = "PRODUCTION (%s)" % _dti
-    else:
-        _mode = "unknown (%s)" % _dti
-    check("Submission mode = %s" % _mode, True,
-          "Test file — only upload to the test portal; for production regenerate in Production mode."
-          if "TEST" in _mode else "",
-          warn=("TEST" in _mode))
-
     return results
 
 
@@ -1174,6 +1158,7 @@ T: dict[str, dict[str, str]] = {
                             "DE": "Test/CTS für das Abnahmeportal (eportal-a.admin.ch), Produktion für das Live-Portal (eportal.admin.ch)."},
     "mode_test_banner":    {"EN": "⚠️ TEST mode (OECD11) — this file is for the acceptance portal (eportal-a.admin.ch) only. Do NOT upload it to the live production portal. Switch to Production (OECD1) before the real filing.",
                             "DE": "⚠️ TEST-Modus (OECD11) — diese Datei ist nur für das Abnahmeportal (eportal-a.admin.ch). NICHT ins Live-Produktionsportal hochladen. Vor der echten Einreichung auf Produktion (OECD1) wechseln."},
+    "testmode_badge":      {"EN": "Testmode",                            "DE": "Testmodus"},
     "gir401":              {"EN": "GIR401 — Ultimate Parent Entity (UPE)",    "DE": "GIR401 — Oberste Muttergesellschaft (UPE)"},
     "gir402":              {"EN": "GIR402 — Designated Filing Entity (DFE)",  "DE": "GIR402 — Benannte Einreichungsstelle (DFE)"},
     "gir404":              {"EN": "GIR404 — Constituent Entity (CE)",         "DE": "GIR404 — Untereinheit (CE)"},
@@ -1508,13 +1493,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-def step_header(num: int, title: str) -> None:
+def step_header(num: int, title: str, badge: str | None = None) -> None:
     """Render a portal-style numbered step header (red circle + title).
-    Strips a leading 'N. ' from the translated section title to avoid a double number."""
+    Strips a leading 'N. ' from the translated section title to avoid a double number.
+    `badge` (e.g. 'Testmode') renders an amber ⚠️ pill next to the title."""
     clean = re.sub(r"^\s*\d+\.\s*", "", title)
+    badge_html = (
+        f"<span style='margin-left:10px; font-size:0.72rem; font-weight:600; "
+        f"color:#9a6700; background:#fff8e1; border:1px solid #f3d27a; "
+        f"border-radius:6px; padding:1px 8px; vertical-align:middle; "
+        f"white-space:nowrap;'>⚠️ {badge}</span>"
+        if badge else ""
+    )
     st.markdown(
         f"<div class='step-head'><div class='step-num'>{num}</div>"
-        f"<div class='step-title'>{clean}</div></div>",
+        f"<div class='step-title'>{clean}{badge_html}</div></div>",
         unsafe_allow_html=True,
     )
 
@@ -1634,8 +1627,12 @@ if uploaded is not None:
 _card_close(_card1)
 
 # ── Step 2: Company details ───────────────────────────────────────────────────
+# The mode radio is rendered later in this run; read its persisted value (default
+# = test, matching the radio's index=1) so the Testmode badge shows immediately.
+_testmode = st.session_state.get("submission_mode", "test") == "test"
 _card2 = _card_open("girc2")
-step_header(2, T["step2"][lang])
+step_header(2, T["step2"][lang],
+            badge=T["testmode_badge"][lang] if _testmode else None)
 if mne_entities:
     st.caption(T["ce_count"][lang].format(len(mne_entities)))
 
@@ -1718,6 +1715,7 @@ with st.expander(T["advanced"][lang]):
         index=1,
         help=T["mode_help"][lang],
         horizontal=True,
+        key="submission_mode",
     )
     if submission_mode == "test":
         st.warning(T["mode_test_banner"][lang])
@@ -1895,28 +1893,19 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                     cols[3].metric("ETR",             fmt_etr(_d["adjusted_cov_tax"], _d["net_globe_income"]))
 
                 checks  = validate_xml(xml_str)
-                n_pass  = sum(1 for _, ok, _, _ in checks if ok)
+                n_pass  = sum(1 for _, ok, _ in checks if ok)
                 n_total = len(checks)
                 all_ok  = n_pass == n_total
-                has_advisory = any(warn for _, _, _, warn in checks)
                 st.session_state["validation_ok"] = all_ok
 
                 with st.expander(
-                    f"{'⚠️' if (not all_ok or has_advisory) else '✅'}  {T['validation_title'][lang]} — "
+                    f"{'✅' if all_ok else '⚠️'}  {T['validation_title'][lang]} — "
                     f"{n_pass}/{n_total} {T['checks_passed'][lang]}",
-                    expanded=not all_ok or has_advisory,
+                    expanded=not all_ok,
                 ):
-                    for label, ok, detail, warn in checks:
-                        # warn = non-gating advisory (e.g. test-mode) → ⚠️ + detail.
-                        # A failed check → ❌ + detail. A plain passing check → ✅
-                        # only; its detail (the parsed value) stays hidden.
-                        if warn:
-                            icon = "⚠️"
-                        elif ok:
-                            icon = "✅"
-                        else:
-                            icon = "❌"
-                        if detail and (warn or not ok):
+                    for label, ok, detail in checks:
+                        icon = "✅" if ok else "❌"
+                        if detail and not ok:
                             st.markdown(f"{icon} &nbsp; **{label}**  \n"
                                         f"&nbsp;&nbsp;&nbsp;&nbsp;`{detail}`")
                         else:

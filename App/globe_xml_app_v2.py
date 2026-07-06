@@ -32,7 +32,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.7.0"   # correction mode (Rektifikat): GIR102 messages built by post-processing a fresh Neumeldung against the original XML — Neumeldung pipeline untouched
+VERSION = "2.7.1"   # correction mode: XML-upload dropzone gets its own headline (was showing the template text via the global ::after CSS)
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1992,15 +1992,20 @@ _card1 = _card_open("girc1")
 step_header(1, T["step1"][lang])
 # The global stRadio CSS hides radio labels (language-pill styling) → render the
 # label as markdown like the other in-card section titles.
+# The EN/DE toggle st.rerun()s BEFORE this widget renders, which makes Streamlit
+# drop widget-keyed state → mirror the choice into a plain session key instead.
 st.markdown(f"**{T['filing_type'][lang]}**")
+_ft_prev = st.session_state.get("filing_type_persist", "neumeldung")
 filing_type = st.radio(
     T["filing_type"][lang],
     ["neumeldung", "korrektur"],
+    index=1 if _ft_prev == "korrektur" else 0,
     format_func=lambda x: T["mode_neumeldung"][lang] if x == "neumeldung" else T["mode_korrektur"][lang],
     horizontal=True,
     key="filing_type",
     label_visibility="collapsed",
 )
+st.session_state["filing_type_persist"] = filing_type
 corr_mode = filing_type == "korrektur"
 uploaded = st.file_uploader(
     T["upload_label"][lang],
@@ -2009,11 +2014,23 @@ uploaded = st.file_uploader(
 )
 orig_file = None
 if corr_mode:
-    orig_file = st.file_uploader(
-        T["korr_upload_label"][lang],
-        type=["xml"],
-        help=T["korr_upload_help"][lang],
+    # The global dropzone CSS injects "Drop your GIR template here…" into EVERY
+    # uploader — scope a correct headline onto this one via its st-key class.
+    _xml_drop_txt = ("Drop the originally submitted XML here, or click to browse"
+                     if lang == "EN" else
+                     "Original eingereichtes Roh-XML hier ablegen oder klicken")
+    st.markdown(
+        '<style>.stApp [class*="st-key-girxmlup"] '
+        '[data-testid="stFileUploaderDropzoneInstructions"] span::after '
+        f'{{ content: "{_xml_drop_txt}"; }}</style>',
+        unsafe_allow_html=True,
     )
+    with st.container(key="girxmlup"):
+        orig_file = st.file_uploader(
+            T["korr_upload_label"][lang],
+            type=["xml"],
+            help=T["korr_upload_help"][lang],
+        )
 
 # ── Seed Step-2 widget defaults (once), then auto-fill from sheet 1 on upload ──
 _WIDGET_DEFAULTS = {

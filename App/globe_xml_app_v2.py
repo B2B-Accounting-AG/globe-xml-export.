@@ -6,6 +6,7 @@ Run: streamlit run globe_xml_app.py
 """
 
 import io
+import json
 import logging
 import os
 import re
@@ -31,7 +32,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.6.3"   # test/prod is not a file-validation point → moved to a Step 2 ⚠️ Testmode badge; validation panel back to pure ✅/❌
+VERSION = "2.7.0"   # correction mode (Rektifikat): GIR102 messages built by post-processing a fresh Neumeldung against the original XML — Neumeldung pipeline untouched
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1105,6 +1106,384 @@ def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
     return results
 
 
+# ─── CORRECTION MODE (Rektifikat) ────────────────────────────────────────────
+# ESTV Technische Wegleitung Kap. 5.3.4–6.4: a correction message (GIR102) resends
+# FilingInfo unchanged (OECD0 / test OECD10, SAME DocRefId — rule 60014) and replaces
+# only the changed sections AS A WHOLE (OECD2 / test OECD12; Storno OECD3/OECD13),
+# each with a fresh DocRefId + CorrDocRefId → the LAST accepted DocRefId (chains,
+# rules 60005–60015). RecJurCode is locked to the original (98200); new and corrected
+# sections must never be mixed in one message (60004). Unchanged sections are OMITTED.
+#
+# Design: corrections are a pure POST-PROCESSING step over a freshly built Neumeldung
+# XML — build_xml()/validate_xml() are untouched, so parity with the accepted
+# production filings is preserved by construction.
+
+CORRECTABLE_TAGS = ("GeneralSection", "Summary", "JurisdictionSection", "UTPRAttribution")
+_SECTION_ORDER   = {"FilingInfo": 0, "GeneralSection": 1, "Summary": 2,
+                    "JurisdictionSection": 3, "UTPRAttribution": 4}
+_TEST_INDICS     = {"OECD10", "OECD11", "OECD12", "OECD13"}
+
+
+def _local_tag(tag: str) -> str:
+    return tag.split("}", 1)[-1]
+
+
+def _sec_jurisdiction(el) -> str:
+    """Jurisdiction key of a section ('' for GeneralSection). Summary nests
+    Jurisdiction/JurisdictionName; JurisdictionSection carries Jurisdiction text."""
+    j = el.find(N + "Jurisdiction")
+    if j is not None:
+        if (j.text or "").strip():
+            return j.text.strip()
+        n = j.find(N + "JurisdictionName")
+        if n is not None and (n.text or "").strip():
+            return n.text.strip()
+    return ""
+
+
+def _walk_sections(body):
+    """Yield (key, element) for every correctable section, keyed by
+    type|jurisdiction (with #n suffix on duplicates), in document order."""
+    seen: dict = {}
+    for el in body:
+        t = _local_tag(el.tag)
+        if t not in CORRECTABLE_TAGS:
+            continue
+        base = f"{t}|{_sec_jurisdiction(el)}"
+        n = seen.get(base, 0) + 1
+        seen[base] = n
+        yield (base if n == 1 else f"{base}#{n}"), el
+
+
+def parse_original_xml(xml_bytes: bytes) -> dict:
+    """Extract the correction context (DocRefIds per section) from the originally
+    submitted RAW GIR XML. The _encrypted.zip cannot be used — it is encrypted with
+    ESTV's public key. If the original was already corrected once, upload the LATEST
+    accepted message instead (correction chains, Wegleitung 6.3.3)."""
+    root = ET.fromstring(xml_bytes)
+    if _local_tag(root.tag) != "GLOBE_OECD":
+        raise ValueError("Not a GIR file — root element is not GLOBE_OECD")
+    hdr  = root.find(N + "MessageSpec")
+    body = root.find(N + "GLOBEBody")
+    if hdr is None or body is None:
+        raise ValueError("MessageSpec / GLOBEBody missing")
+
+    def _h(tag):
+        el = hdr.find(N + tag)
+        return el.text.strip() if el is not None and el.text else None
+
+    fi = body.find(N + "FilingInfo")
+    if fi is None:
+        raise ValueError("FilingInfo missing")
+    fi_ds = fi.find(N + "DocSpec")
+    if fi_ds is None or fi_ds.find(S + "DocRefId") is None:
+        raise ValueError("FilingInfo DocSpec/DocRefId missing")
+
+    indics = {(fi_ds.find(S + "DocTypeIndic").text or "").strip()
+              if fi_ds.find(S + "DocTypeIndic") is not None else ""}
+    ctx = {
+        "message_ref_id":    _h("MessageRefId"),
+        "message_type":      _h("MessageTypeIndic"),
+        "reporting_period":  _h("ReportingPeriod"),
+        "transmitting":      _h("TransmittingCountry") or "CH",
+        "filing_doc_ref_id": (fi_ds.find(S + "DocRefId").text or "").strip(),
+        "sections":          [],
+        "root":              root,
+    }
+    for key, el in _walk_sections(body):
+        ds = el.find(N + "DocSpec")
+        if ds is None or ds.find(S + "DocRefId") is None or not (ds.find(S + "DocRefId").text or "").strip():
+            raise ValueError(f"Section {key}: DocSpec/DocRefId missing")
+        dti = ds.find(S + "DocTypeIndic")
+        rec = el.find(N + "RecJurCode")
+        t, jur = key.split("|")[0], key.split("|")[1].split("#")[0]
+        ctx["sections"].append({
+            "key":            key,
+            "type":           t,
+            "jurisdiction":   jur,
+            "doc_ref_id":     ds.find(S + "DocRefId").text.strip(),
+            "doc_type_indic": (dti.text or "").strip() if dti is not None else "",
+            "rec_jur_code":   rec.text.strip() if rec is not None and rec.text else None,
+            "element":        el,
+        })
+        indics.add(ctx["sections"][-1]["doc_type_indic"])
+    ctx["test_mode"] = bool(indics & _TEST_INDICS)
+    return ctx
+
+
+def _canonical_section(el) -> str:
+    """Content fingerprint of a section: DocSpec dropped, C14N with whitespace
+    stripped — so UUID/indentation differences never count as a change."""
+    clone = ET.fromstring(ET.tostring(el))
+    for ds in clone.findall(N + "DocSpec"):
+        clone.remove(ds)
+    return ET.canonicalize(ET.tostring(clone, encoding="unicode"), strip_text=True)
+
+
+def diff_correction_sections(original_ctx: dict, new_xml_str: str) -> list[dict]:
+    """Per-section comparison of a freshly regenerated report vs the original.
+    Status: 'changed' | 'unchanged' | 'new' (NOT allowed in a correction —
+    needs a separate GIR101 Neumeldung, Wegleitung 6.4.2) | 'missing'
+    (only in the original → Storno candidate). Advisory — the user decides."""
+    body = ET.fromstring(new_xml_str).find(N + "GLOBEBody")
+    new_by_key = dict(_walk_sections(body))
+    rows = []
+    for sec in original_ctx["sections"]:
+        el = new_by_key.pop(sec["key"], None)
+        if el is None:
+            status = "missing"
+        elif _canonical_section(el) == _canonical_section(sec["element"]):
+            status = "unchanged"
+        else:
+            status = "changed"
+        rows.append({"key": sec["key"], "type": sec["type"],
+                     "jurisdiction": sec["jurisdiction"],
+                     "doc_ref_id": sec["doc_ref_id"], "status": status})
+    for key, el in new_by_key.items():
+        t = key.split("|")[0]
+        rows.append({"key": key, "type": t,
+                     "jurisdiction": key.split("|")[1].split("#")[0],
+                     "doc_ref_id": None, "status": "new"})
+    return rows
+
+
+def _insert_section(body, el) -> None:
+    """Insert a section at its schema-valid position (GLOBEBody sequence:
+    FilingInfo, GeneralSection, Summary*, JurisdictionSection*, UTPRAttribution*)."""
+    rank = _SECTION_ORDER.get(_local_tag(el.tag), 99)
+    for i, child in enumerate(body):
+        if _SECTION_ORDER.get(_local_tag(child.tag), 99) > rank:
+            body.insert(i, el)
+            return
+    body.append(el)
+
+
+def apply_correction(new_xml_str: str, original_ctx: dict, selection: dict,
+                     test_mode: bool = False) -> str:
+    """Turn a freshly built Neumeldung XML into a GIR102 correction message.
+
+    selection: {section key: 'correct' | 'delete'}. Sections not in the selection
+    are dropped (unchanged sections are omitted from a correction). 'delete' for a
+    section absent from the new XML resends the ORIGINAL element as the Storno body
+    (Wegleitung 6.4.3: fill the Musselemente by resending the original content)."""
+    root = ET.fromstring(new_xml_str)
+    hdr  = root.find(N + "MessageSpec")
+    body = root.find(N + "GLOBEBody")
+    hdr.find(N + "MessageTypeIndic").text = "GIR102"
+
+    year = (original_ctx.get("reporting_period") or "0000")[:4]
+    cc   = original_ctx.get("transmitting") or "CH"
+    dti_resend = "OECD10" if test_mode else "OECD0"
+    dti_corr   = "OECD12" if test_mode else "OECD2"
+    dti_del    = "OECD13" if test_mode else "OECD3"
+    orig_by_key = {s["key"]: s for s in original_ctx["sections"]}
+
+    def _new_docref() -> str:
+        return f"{cc}{year}-{uuid.uuid4()}"
+
+    def _rewrite_docspec(el, dti, corr_ref) -> None:
+        ds = el.find(N + "DocSpec")
+        ds.find(S + "DocTypeIndic").text = dti
+        ds.find(S + "DocRefId").text = _new_docref()
+        # stf DocSpec_Type sequence: DocTypeIndic, DocRefId, [CorrMessageRefId],
+        # [CorrDocRefId] — appending CorrDocRefId last keeps the order valid.
+        ET.SubElement(ds, S + "CorrDocRefId").text = corr_ref
+
+    # FilingInfo → Resend with the ORIGINAL DocRefId, no CorrDocRefId (rule 60014/60012)
+    fi_ds = body.find(N + "FilingInfo").find(N + "DocSpec")
+    fi_ds.find(S + "DocTypeIndic").text = dti_resend
+    fi_ds.find(S + "DocRefId").text = original_ctx["filing_doc_ref_id"]
+
+    handled = set()
+    for key, el in list(_walk_sections(body)):
+        action = selection.get(key)
+        orig   = orig_by_key.get(key)
+        if action not in ("correct", "delete") or orig is None:
+            body.remove(el)
+            continue
+        handled.add(key)
+        rec = el.find(N + "RecJurCode")
+        if rec is not None and orig.get("rec_jur_code"):
+            rec.text = orig["rec_jur_code"]          # RecJurCode lock (98200)
+        _rewrite_docspec(el, dti_del if action == "delete" else dti_corr,
+                         orig["doc_ref_id"])
+
+    # Storno of sections that only exist in the original: resend the original
+    # element as a whole with a fresh DocSpec (OECD3/OECD13 + CorrDocRefId).
+    for key, action in selection.items():
+        if action != "delete" or key in handled or key not in orig_by_key:
+            continue
+        orig  = orig_by_key[key]
+        clone = ET.fromstring(ET.tostring(orig["element"]))
+        old_ds = clone.find(N + "DocSpec")
+        if old_ds is not None:
+            clone.remove(old_ds)
+        ds = ET.SubElement(clone, N + "DocSpec")
+        ET.SubElement(ds, S + "DocTypeIndic").text = dti_del
+        ET.SubElement(ds, S + "DocRefId").text = _new_docref()
+        ET.SubElement(ds, S + "CorrDocRefId").text = orig["doc_ref_id"]
+        _insert_section(body, clone)
+
+    ET.indent(root, space="  ")
+    raw = ET.tostring(root, encoding="unicode")
+    return f"<?xml version='1.0' encoding='utf-8'?>\n{raw}"
+
+
+def validate_correction_xml(xml_str: str, original_ctx: dict) -> list[tuple[str, bool, str]]:
+    """Layer 1 — the correction file itself. Every documented ESTV correction rule
+    becomes a gating check (labels cite the rule)."""
+    results = []
+
+    def check(label, passed, detail=""):
+        results.append((label, passed, detail))
+
+    try:
+        root = ET.fromstring(xml_str)
+        check("Well-formed XML", True)
+    except ET.ParseError as e:
+        check("Well-formed XML", False, str(e))
+        return results
+
+    hdr  = root.find(N + "MessageSpec")
+    body = root.find(N + "GLOBEBody")
+
+    def _h(tag):
+        el = hdr.find(N + tag) if hdr is not None else None
+        return el.text.strip() if el is not None and el.text else None
+
+    mti = _h("MessageTypeIndic")
+    check("MessageTypeIndic = GIR102 (Korrekturmeldung)", mti == "GIR102", mti or "missing")
+
+    mr = _h("MessageRefId")
+    check("MessageRefId — new & valid format, ≠ original (rule 60001/6.3.2)",
+          bool(mr and re.match(r"^[A-Z]{2}\d{4}[A-Z]{2}.+", mr)
+               and mr != original_ctx.get("message_ref_id")),
+          mr or "missing")
+
+    rp = _h("ReportingPeriod")
+    check("ReportingPeriod matches the original filing",
+          rp == original_ctx.get("reporting_period"),
+          f"{rp} vs original {original_ctx.get('reporting_period')}" if rp != original_ctx.get("reporting_period") else "")
+
+    year = (original_ctx.get("reporting_period") or "0000")[:4]
+    orig_docrefs   = {s["doc_ref_id"] for s in original_ctx["sections"]}
+    orig_docrefs.add(original_ctx["filing_doc_ref_id"])
+    orig_by_docref = {s["doc_ref_id"]: s for s in original_ctx["sections"]}
+
+    # FilingInfo: OECD0/OECD10 resend, SAME DocRefId, no CorrDocRefId
+    fi = body.find(N + "FilingInfo") if body is not None else None
+    fi_ds  = fi.find(N + "DocSpec") if fi is not None else None
+    fi_dti = fi_ds.find(S + "DocTypeIndic").text if fi_ds is not None and fi_ds.find(S + "DocTypeIndic") is not None else None
+    fi_dr  = fi_ds.find(S + "DocRefId").text if fi_ds is not None and fi_ds.find(S + "DocRefId") is not None else None
+    check("FilingInfo resent as OECD0/OECD10 with the ORIGINAL DocRefId (rule 60014)",
+          fi_dti in ("OECD0", "OECD10") and fi_dr == original_ctx["filing_doc_ref_id"],
+          f"DocTypeIndic={fi_dti}, DocRefId={fi_dr}")
+    check("FilingInfo resend carries no CorrDocRefId (rule 60012)",
+          fi_ds is not None and fi_ds.find(S + "CorrDocRefId") is None)
+
+    # Sections
+    secs = []
+    for key, el in _walk_sections(body if body is not None else []):
+        ds = el.find(N + "DocSpec")
+        secs.append({
+            "key":  key,
+            "type": key.split("|")[0],
+            "dti":  (ds.find(S + "DocTypeIndic").text or "").strip() if ds is not None and ds.find(S + "DocTypeIndic") is not None else "",
+            "dr":   (ds.find(S + "DocRefId").text or "").strip() if ds is not None and ds.find(S + "DocRefId") is not None else "",
+            "corr": (ds.find(S + "CorrDocRefId").text or "").strip() if ds is not None and ds.find(S + "CorrDocRefId") is not None else None,
+            "rec":  el.find(N + "RecJurCode").text.strip() if el.find(N + "RecJurCode") is not None and el.find(N + "RecJurCode").text else None,
+        })
+
+    check("At least one corrected/deleted section present", len(secs) > 0)
+
+    bad_mix = [s["key"] for s in secs if s["dti"] not in ("OECD2", "OECD3", "OECD12", "OECD13")]
+    check("No new sections mixed in — all DocTypeIndic OECD2/OECD3 (rule 60004)",
+          not bad_mix, ", ".join(bad_mix))
+
+    all_indics = {s["dti"] for s in secs} | ({fi_dti} if fi_dti else set())
+    flavors = {i in _TEST_INDICS for i in all_indics}
+    check("Test/production DocTypeIndic flavor consistent (rule 50009)",
+          len(flavors) <= 1, f"mixed: {sorted(all_indics)}" if len(flavors) > 1 else "")
+
+    no_corr = [s["key"] for s in secs if not s["corr"]]
+    check("Every section carries a CorrDocRefId (rule 60015)", not no_corr, ", ".join(no_corr))
+
+    bad_target = []
+    for s in secs:
+        orig = orig_by_docref.get(s["corr"] or "")
+        if orig is None or orig["type"] != s["type"]:
+            bad_target.append(s["key"])
+    check("Every CorrDocRefId resolves to an original section of the same type (rules 60005/60008)",
+          not bad_target, ", ".join(bad_target))
+
+    corr_ids = [s["corr"] for s in secs if s["corr"]]
+    dup_corr = sorted({c for c in corr_ids if corr_ids.count(c) > 1})
+    check("Each CorrDocRefId used only once in this message (rule 60006)",
+          not dup_corr, ", ".join(dup_corr))
+
+    new_ids = [s["dr"] for s in secs]
+    reused  = sorted({d for d in new_ids if d in orig_docrefs or new_ids.count(d) > 1})
+    check("New DocRefIds unique & never reused from the original (rule 60007)",
+          not reused, ", ".join(reused))
+
+    bad_fmt = [s["key"] for s in secs
+               if not re.match(r"^[A-Z]{2}\d{4}.{1,194}$", s["dr"] or "")
+               or (s["dr"] or "")[2:6] != year]
+    check(f"DocRefId format CH{year}… — period matches the filing (rule 60011)",
+          not bad_fmt, ", ".join(bad_fmt))
+
+    bad_rec = []
+    for s in secs:
+        orig = orig_by_docref.get(s["corr"] or "")
+        if orig is not None and orig.get("rec_jur_code") and s["rec"] != orig["rec_jur_code"]:
+            bad_rec.append(f"{s['key']} ({s['rec']} vs {orig['rec_jur_code']})")
+    check("RecJurCode equals the original section's RecJurCode (rule 98200)",
+          not bad_rec, "; ".join(bad_rec))
+
+    return results
+
+
+def build_merged_view(original_ctx: dict, correction_xml_str: str) -> str:
+    """Splice the corrected sections into the original report — the state ESTV's
+    database will hold after acceptance. ESTV evaluates the cross-element rules
+    (98201, 70008 ff.) against THIS, so we re-run the full structural validation
+    on it (Layer 2). Critical for filings with no test-portal access."""
+    merged = ET.fromstring(ET.tostring(original_ctx["root"]))
+    mbody  = merged.find(N + "GLOBEBody")
+    pos_by_docref = {}
+    for el in mbody:
+        ds = el.find(N + "DocSpec")
+        if ds is not None and ds.find(S + "DocRefId") is not None:
+            pos_by_docref[(ds.find(S + "DocRefId").text or "").strip()] = el
+
+    corr_body = ET.fromstring(correction_xml_str).find(N + "GLOBEBody")
+    for _key, el in _walk_sections(corr_body):
+        ds   = el.find(N + "DocSpec")
+        dti  = (ds.find(S + "DocTypeIndic").text or "").strip() if ds.find(S + "DocTypeIndic") is not None else ""
+        corr = ds.find(S + "CorrDocRefId")
+        target = pos_by_docref.get((corr.text or "").strip()) if corr is not None and corr.text else None
+        if target is None:
+            continue                     # dangling CorrDocRefId → Layer 1 already fails it
+        if dti in ("OECD3", "OECD13"):   # Storno → section disappears from the report
+            mbody.remove(target)
+        else:                            # correction → whole-element replacement
+            idx = list(mbody).index(target)
+            mbody.remove(target)
+            mbody.insert(idx, ET.fromstring(ET.tostring(el)))
+    ET.indent(merged, space="  ")
+    return f"<?xml version='1.0' encoding='utf-8'?>\n{ET.tostring(merged, encoding='unicode')}"
+
+
+def validate_correction(correction_xml: str, original_ctx: dict):
+    """Both layers: (correction-file checks, merged-state structural checks)."""
+    layer1 = validate_correction_xml(correction_xml, original_ctx)
+    try:
+        layer2 = validate_xml(build_merged_view(original_ctx, correction_xml))
+    except Exception as e:  # merged view must never crash the app
+        layer2 = [("Merged view could not be built", False, str(e))]
+    return layer1, layer2
+
+
 # ─── TRANSLATIONS ────────────────────────────────────────────────────────────
 
 T: dict[str, dict[str, str]] = {
@@ -1273,6 +1652,55 @@ T: dict[str, dict[str, str]] = {
             "dar und wird ohne Gewähr bereitgestellt; lassen Sie die Meldung von einer Fachperson prüfen."
         ),
     },
+    # ── Correction mode (Rektifikat) ──
+    "filing_type":         {"EN": "Filing type",                       "DE": "Meldungsart"},
+    "mode_neumeldung":     {"EN": "New filing (Neumeldung)",           "DE": "Neumeldung"},
+    "mode_korrektur":      {"EN": "Correction (Rektifikat)",           "DE": "Korrektur (Rektifikat)"},
+    "korr_badge":          {"EN": "Correction",                        "DE": "Korrektur"},
+    "korr_upload_label":   {"EN": "Originally submitted XML (raw)",    "DE": "Original eingereichtes XML (Roh-XML)"},
+    "korr_upload_help":    {"EN": ("The RAW XML of the last accepted filing (from 'Download raw XML'). The _encrypted.zip "
+                                   "cannot be used — it is encrypted with ESTV's public key. If a correction was already "
+                                   "accepted before, upload that LATEST correction instead (correction chains)."),
+                            "DE": ("Das ROH-XML der letzten akzeptierten Meldung ('Roh-XML herunterladen'). Die _encrypted.zip "
+                                   "kann nicht verwendet werden — sie ist mit dem öffentlichen ESTV-Schlüssel verschlüsselt. "
+                                   "Wurde bereits eine Korrektur akzeptiert, laden Sie stattdessen DIESE letzte Korrektur hoch (Korrekturketten).")},
+    "korr_need_both":      {"EN": "Correction mode: upload the corrected Excel template AND the originally submitted raw XML (Step 1).",
+                            "DE": "Korrekturmodus: Laden Sie die korrigierte Excel-Vorlage UND das original eingereichte Roh-XML hoch (Schritt 1)."},
+    "korr_parse_ok":       {"EN": "Original parsed: {} sections, MessageRefId {}.",
+                            "DE": "Original eingelesen: {} Berichtselemente, MessageRefId {}."},
+    "korr_parse_err":      {"EN": "Could not read the original XML: {}", "DE": "Original-XML konnte nicht gelesen werden: {}"},
+    "korr_sections_title": {"EN": "Sections to correct",               "DE": "Zu korrigierende Berichtselemente"},
+    "korr_sections_help":  {"EN": ("Auto-comparison of your corrected Excel against the original filing. Only ticked sections go into "
+                                   "the correction message — unchanged sections are omitted (ESTV rule). Review with your tax expert."),
+                            "DE": ("Automatischer Vergleich Ihrer korrigierten Excel-Datei mit der Originalmeldung. Nur angehakte "
+                                   "Berichtselemente kommen in die Korrekturmeldung — unveränderte werden weggelassen (ESTV-Regel). "
+                                   "Mit Ihrer Steuerfachperson prüfen.")},
+    "korr_st_changed":     {"EN": "CHANGED",                           "DE": "GEÄNDERT"},
+    "korr_st_unchanged":   {"EN": "unchanged",                         "DE": "unverändert"},
+    "korr_st_new":         {"EN": "NEW — not allowed here",            "DE": "NEU — hier nicht erlaubt"},
+    "korr_st_missing":     {"EN": "missing in Excel",                  "DE": "fehlt im Excel"},
+    "korr_new_blocked":    {"EN": ("{} new section(s) found that are not in the original filing. New sections cannot be part of a "
+                                   "correction (GIR102) — they need a separate Neumeldung (GIR101) with the FilingInfo resent. "
+                                   "They will be EXCLUDED from this correction file."),
+                            "DE": ("{} neue(s) Berichtselement(e) gefunden, die nicht in der Originalmeldung sind. Neue Elemente dürfen "
+                                   "nicht in eine Korrektur (GIR102) — sie brauchen eine separate Neumeldung (GIR101) mit erneut "
+                                   "gesendeter FilingInfo. Sie werden aus dieser Korrekturdatei AUSGESCHLOSSEN.")},
+    "korr_advanced":       {"EN": "Advanced — DocRefIds & Storno",     "DE": "Erweitert — DocRefIds & Storno"},
+    "korr_adv_help":       {"EN": ("DocRefIds are pre-filled from the uploaded original. Only override them if you must recover them "
+                                   "from an ESTV status message instead. Storno (deletion) removes a section from the report — "
+                                   "it CANNOT be undone by a later correction."),
+                            "DE": ("DocRefIds sind aus dem hochgeladenen Original vorbefüllt. Nur überschreiben, wenn sie stattdessen "
+                                   "aus einer ESTV-Statusmeldung rekonstruiert werden müssen. Storno löscht ein Berichtselement aus "
+                                   "dem Bericht — das kann durch eine spätere Korrektur NICHT rückgängig gemacht werden.")},
+    "korr_fi_docref":      {"EN": "FilingInfo DocRefId (original)",    "DE": "FilingInfo DocRefId (Original)"},
+    "korr_storno_label":   {"EN": "Storno (delete) {}",                "DE": "Storno (löschen) {}"},
+    "korr_none_selected":  {"EN": "Select at least one section to correct or delete.",
+                            "DE": "Wählen Sie mindestens ein Berichtselement zum Korrigieren oder Löschen aus."},
+    "korr_l1_title":       {"EN": "Correction-file checks (ESTV rules)", "DE": "Prüfungen der Korrekturdatei (ESTV-Regeln)"},
+    "korr_l2_title":       {"EN": "Merged report after correction — full re-validation",
+                            "DE": "Gesamtbericht nach Korrektur — vollständige Neuvalidierung"},
+    "korr_summary":        {"EN": "Correction message: {} section(s) corrected, {} deleted — unchanged sections omitted.",
+                            "DE": "Korrekturmeldung: {} Berichtselement(e) korrigiert, {} storniert — unveränderte weggelassen."},
 }
 
 
@@ -1562,11 +1990,30 @@ with _lang:
 # ── Step 1: Upload ────────────────────────────────────────────────────────────
 _card1 = _card_open("girc1")
 step_header(1, T["step1"][lang])
+# The global stRadio CSS hides radio labels (language-pill styling) → render the
+# label as markdown like the other in-card section titles.
+st.markdown(f"**{T['filing_type'][lang]}**")
+filing_type = st.radio(
+    T["filing_type"][lang],
+    ["neumeldung", "korrektur"],
+    format_func=lambda x: T["mode_neumeldung"][lang] if x == "neumeldung" else T["mode_korrektur"][lang],
+    horizontal=True,
+    key="filing_type",
+    label_visibility="collapsed",
+)
+corr_mode = filing_type == "korrektur"
 uploaded = st.file_uploader(
     T["upload_label"][lang],
     type=["xlsx", "xlsm"],
     help=T["upload_help"][lang],
 )
+orig_file = None
+if corr_mode:
+    orig_file = st.file_uploader(
+        T["korr_upload_label"][lang],
+        type=["xml"],
+        help=T["korr_upload_help"][lang],
+    )
 
 # ── Seed Step-2 widget defaults (once), then auto-fill from sheet 1 on upload ──
 _WIDGET_DEFAULTS = {
@@ -1834,7 +2281,163 @@ def validate_inputs(cfg: dict) -> list[str]:
     return errors
 
 
-if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None):
+def _current_cfg(entities) -> dict:
+    """Assemble the build_xml cfg from the Step-2 widget state (correction mode)."""
+    return {
+        "company_name":    company_name,
+        "tin_value":       tin_value,
+        "tin_issued_by":   tin_issued_by,
+        "tin_type":        tin_type,
+        "reporting_role":  reporting_role,
+        "rec_jur_code":    rec_jur_code.strip().upper(),
+        "currency":        currency,
+        "jurisdiction":    jurisdiction,
+        "fas":             fas,
+        "cfs_of_upe":      cfs_of_upe,
+        "period_start":    period_start,
+        "period_end":      period_end,
+        "upe_rules":       upe_rules,
+        "upe_globe_status": upe_globe_status,
+        "constituent_entities": entities,
+    }
+
+
+@st.cache_data(show_spinner=False)
+def _corr_regenerate(file_bytes: bytes, cfg_json: str, sel_isos_json: str, test: bool) -> str:
+    """Regenerate the full report from the corrected Excel (cached — reruns on
+    every widget change would otherwise re-read the workbook each time)."""
+    parsed = read_excel_v2(file_bytes)
+    cfg = json.loads(cfg_json)
+    _sel = json.loads(sel_isos_json)
+    cfg["safe_harbours"] = parsed["safe_harbours"] if _sel is None else [
+        s for s in parsed["safe_harbours"] if (s.get("iso") or "?") in _sel]
+    if not cfg.get("constituent_entities"):
+        cfg["constituent_entities"] = parsed["mne"]["constituent_entities"]
+    return build_xml(parsed["computations"], cfg, test_mode=test)
+
+
+# ── Correction mode: parse original + live section diff + selection ──────────
+_corr_ctx = None
+_corr_rows = []
+_corr_selection: dict = {}
+_corr_new_xml = None
+if corr_mode and uploaded is not None and orig_file is not None:
+    try:
+        _corr_ctx = parse_original_xml(orig_file.getvalue())
+        st.caption(T["korr_parse_ok"][lang].format(
+            len(_corr_ctx["sections"]) + 1, _corr_ctx["message_ref_id"]))
+        _corr_new_xml = _corr_regenerate(
+            uploaded.getvalue(),
+            json.dumps(_current_cfg(edited_entities), sort_keys=True),
+            json.dumps(st.session_state.get("sh_selected_isos")),
+            submission_mode == "test",
+        )
+        _corr_rows = diff_correction_sections(_corr_ctx, _corr_new_xml)
+
+        st.markdown(f"**{T['korr_sections_title'][lang]}**")
+        st.caption(T["korr_sections_help"][lang])
+        _n_new = sum(1 for r in _corr_rows if r["status"] == "new")
+        if _n_new:
+            st.warning(T["korr_new_blocked"][lang].format(_n_new))
+        _ST_COLOR = {"changed": "#e0303c", "unchanged": "#1f9d57",
+                     "new": "#9a6700", "missing": "#9a6700"}
+        for r in _corr_rows:
+            _c1, _c2, _c3 = st.columns([5, 4, 3], vertical_alignment="center")
+            _lbl = r["type"] + (f" — {r['jurisdiction']}" if r["jurisdiction"] else "")
+            if r["status"] in ("changed", "unchanged"):
+                if _c1.checkbox(_lbl, value=(r["status"] == "changed"),
+                                key=f"korrsel_{r['key']}"):
+                    _corr_selection[r["key"]] = "correct"
+            else:
+                _c1.markdown(f"<span style='color:#8a96a3;'>{_lbl}</span>",
+                             unsafe_allow_html=True)
+            _c2.markdown(f"<span style='color:{_ST_COLOR[r['status']]};font-size:0.82rem;"
+                         f"font-weight:600;'>{T['korr_st_' + r['status']][lang]}</span>",
+                         unsafe_allow_html=True)
+            _c3.markdown(f"<span style='color:#8a96a3;font-size:0.72rem;'>"
+                         f"{(r['doc_ref_id'] or '')[:13]}…</span>", unsafe_allow_html=True)
+
+        with st.expander(T["korr_advanced"][lang]):
+            st.caption(T["korr_adv_help"][lang])
+            _fi_dr = st.text_input(T["korr_fi_docref"][lang],
+                                   value=_corr_ctx["filing_doc_ref_id"], key="korr_fi_dr")
+            if _fi_dr.strip():
+                _corr_ctx["filing_doc_ref_id"] = _fi_dr.strip()
+            for _s in _corr_ctx["sections"]:
+                _slbl = _s["type"] + (f" — {_s['jurisdiction']}" if _s["jurisdiction"] else "")
+                _dr = st.text_input(f"DocRefId: {_slbl}", value=_s["doc_ref_id"],
+                                    key=f"korr_dr_{_s['key']}")
+                if _dr.strip():
+                    _s["doc_ref_id"] = _dr.strip()
+            for _r in _corr_rows:
+                if _r["status"] not in ("missing", "unchanged"):
+                    continue
+                _slbl = _r["type"] + (f" — {_r['jurisdiction']}" if _r["jurisdiction"] else "")
+                if st.checkbox(T["korr_storno_label"][lang].format(_slbl),
+                               key=f"korrdel_{_r['key']}"):
+                    _corr_selection[_r["key"]] = "delete"
+    except Exception as _e:
+        logging.exception("Correction pre-processing failed")
+        st.error(T["korr_parse_err"][lang].format(_e))
+        _corr_ctx = None
+elif corr_mode:
+    st.info(T["korr_need_both"][lang])
+
+_gen_disabled = uploaded is None or (corr_mode and (orig_file is None or _corr_ctx is None))
+_gen_clicked = st.button(T["generate_btn"][lang], type="primary", disabled=_gen_disabled)
+
+if _gen_clicked and corr_mode:
+    if _corr_ctx is None or _corr_new_xml is None:
+        st.error(T["korr_need_both"][lang])
+    elif not _corr_selection:
+        st.error(T["korr_none_selected"][lang])
+    else:
+        with st.spinner(T["spinner_gen"][lang]):
+            try:
+                input_errors = validate_inputs(_current_cfg(edited_entities))
+                if input_errors:
+                    for err in input_errors:
+                        st.error(err)
+                    st.stop()
+                xml_str = apply_correction(_corr_new_xml, _corr_ctx, _corr_selection,
+                                           test_mode=(submission_mode == "test"))
+                _n_corr = sum(1 for v in _corr_selection.values() if v == "correct")
+                _n_del  = sum(1 for v in _corr_selection.values() if v == "delete")
+                _prefix = "Test_" if submission_mode == "test" else ""
+                st.session_state["xml_str"] = xml_str
+                st.session_state["xml_filename"] = (
+                    f"{_prefix}gir_{period_end[:4]}_{jurisdiction}_korrektur.xml")
+                st.caption(T["korr_summary"][lang].format(_n_corr, _n_del))
+
+                l1, l2 = validate_correction(xml_str, _corr_ctx)
+                all_ok = all(ok for _, ok, _ in l1) and all(ok for _, ok, _ in l2)
+                st.session_state["validation_ok"] = all_ok
+
+                for _title, _checks in ((T["korr_l1_title"][lang], l1),
+                                        (T["korr_l2_title"][lang], l2)):
+                    _np, _nt = sum(1 for _, ok, _ in _checks if ok), len(_checks)
+                    with st.expander(
+                        f"{'✅' if _np == _nt else '⚠️'}  {_title} — {_np}/{_nt} {T['checks_passed'][lang]}",
+                        expanded=_np != _nt,
+                    ):
+                        for label, ok, detail in _checks:
+                            icon = "✅" if ok else "❌"
+                            if detail and not ok:
+                                st.markdown(f"{icon} &nbsp; **{label}**  \n"
+                                            f"&nbsp;&nbsp;&nbsp;&nbsp;`{detail}`")
+                            else:
+                                st.markdown(f"{icon} &nbsp; {label}")
+
+                if all_ok:
+                    st.success(T["all_passed"][lang])
+                else:
+                    st.warning(T["download_blocked"][lang])
+                with st.expander(T["preview_xml"][lang]):
+                    st.code(xml_str, language="xml")
+            except Exception as e:
+                logging.exception("Correction build failed")
+                st.error(T["error_msg"][lang].format(e))
+elif _gen_clicked:
     if uploaded is None:
         st.error(T["upload_first"][lang])
     else:
@@ -2010,7 +2613,7 @@ if st.button(T["generate_btn"][lang], type="primary", disabled=uploaded is None)
                 logging.exception("XML generation failed")
                 st.error(T["error_msg"][lang].format(e))
 
-elif uploaded is None:
+elif uploaded is None and not corr_mode:
     st.info(T["upload_to_enable"][lang])
 
 _card_close(_card3)

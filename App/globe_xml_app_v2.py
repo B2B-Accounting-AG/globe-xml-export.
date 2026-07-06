@@ -32,7 +32,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.7.1"   # correction mode: XML-upload dropzone gets its own headline (was showing the template text via the global ::after CSS)
+VERSION = "2.7.2"   # EN/DE switch no longer drops widget state (early st.rerun removed) — mode, Step-2 edits and uploads survive a language change
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -1984,16 +1984,22 @@ with _lang:
         key="lang_radio",
     )
     if selected != lang:
+        # No st.rerun() here: an early rerun aborts the script before the widgets
+        # below are instantiated, so Streamlit drops ALL widget-keyed state
+        # (filing type, submission mode, Step-2 edits, uploads). Nothing rendered
+        # above this point is translated, so continuing with the new language is
+        # equivalent — and every widget keeps its state.
+        lang = selected
         st.session_state["lang"] = selected
-        st.rerun()
 
 # ── Step 1: Upload ────────────────────────────────────────────────────────────
 _card1 = _card_open("girc1")
 step_header(1, T["step1"][lang])
 # The global stRadio CSS hides radio labels (language-pill styling) → render the
 # label as markdown like the other in-card section titles.
-# The EN/DE toggle st.rerun()s BEFORE this widget renders, which makes Streamlit
-# drop widget-keyed state → mirror the choice into a plain session key instead.
+# Translated option labels change the widget's identity on a language switch, so
+# Streamlit silently resets the radio. Deterministic fix: language-dependent key
+# (every switch = a fresh widget) seeded from a plain persist key that we own.
 st.markdown(f"**{T['filing_type'][lang]}**")
 _ft_prev = st.session_state.get("filing_type_persist", "neumeldung")
 filing_type = st.radio(
@@ -2002,7 +2008,7 @@ filing_type = st.radio(
     index=1 if _ft_prev == "korrektur" else 0,
     format_func=lambda x: T["mode_neumeldung"][lang] if x == "neumeldung" else T["mode_korrektur"][lang],
     horizontal=True,
-    key="filing_type",
+    key=f"filing_type_{lang}",
     label_visibility="collapsed",
 )
 st.session_state["filing_type_persist"] = filing_type
@@ -2011,6 +2017,7 @@ uploaded = st.file_uploader(
     T["upload_label"][lang],
     type=["xlsx", "xlsm"],
     help=T["upload_help"][lang],
+    key="upl_template",   # stable identity — else a language switch drops the file
 )
 orig_file = None
 if corr_mode:
@@ -2030,6 +2037,7 @@ if corr_mode:
             T["korr_upload_label"][lang],
             type=["xml"],
             help=T["korr_upload_help"][lang],
+            key="upl_orig_xml",
         )
 
 # ── Seed Step-2 widget defaults (once), then auto-fill from sheet 1 on upload ──
@@ -2091,9 +2099,13 @@ if uploaded is not None:
 _card_close(_card1)
 
 # ── Step 2: Company details ───────────────────────────────────────────────────
-# The mode radio is rendered later in this run; read its persisted value (default
-# = test, matching the radio's index=1) so the Testmode badge shows immediately.
-_testmode = st.session_state.get("submission_mode", "test") == "test"
+# The mode radio is rendered later in this run: prefer its live widget value
+# (updated by Streamlit BEFORE the rerun) so the badge reacts to the click
+# immediately; fall back to the persist key (survives language switches).
+_testmode = st.session_state.get(
+    f"submission_mode_{lang}",
+    st.session_state.get("submission_mode_persist", "test"),
+) == "test"
 _card2 = _card_open("girc2")
 step_header(2, T["step2"][lang],
             badge=T["testmode_badge"][lang] if _testmode else None)
@@ -2172,15 +2184,18 @@ with st.expander(T["advanced"][lang]):
         format_func=lambda x: UPE_GLOBE_STATUS_LABELS[x],
         help=T["upe_globe_status_help"][lang],
     )
+    # Same language-switch reset trap as the filing-type radio → persist pattern.
+    _sm_prev = st.session_state.get("submission_mode_persist", "test")
     submission_mode = st.radio(
         T["submission_mode"][lang],
         ["production", "test"],
         format_func=lambda x: T["mode_production"][lang] if x == "production" else T["mode_test"][lang],
-        index=1,
+        index=0 if _sm_prev == "production" else 1,
         help=T["mode_help"][lang],
         horizontal=True,
-        key="submission_mode",
+        key=f"submission_mode_{lang}",
     )
+    st.session_state["submission_mode_persist"] = submission_mode
     if submission_mode == "test":
         st.warning(T["mode_test_banner"][lang])
 
@@ -2653,7 +2668,7 @@ st.markdown(
 )
 
 with st.expander(T["override_key"][lang]):
-    pem_file = st.file_uploader(T["pem_label"][lang], type=["pem", "cer"])
+    pem_file = st.file_uploader(T["pem_label"][lang], type=["pem", "cer"], key="upl_pem")
     if pem_file is not None:
         pem_override = pem_file.read()
         st.success(T["override_active"][lang])

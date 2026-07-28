@@ -5,6 +5,7 @@ Streamlit web UI for converting the Swiss QDMTT Excel template to OECD GIR XML.
 Run: streamlit run globe_xml_app.py
 """
 
+import hashlib
 import io
 import json
 import logging
@@ -32,7 +33,7 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(message)s",
 )
 
-VERSION = "2.7.2"   # EN/DE switch no longer drops widget state (early st.rerun removed) — mode, Step-2 edits and uploads survive a language change
+VERSION = "2.8.0"   # Step 4: single "Download package" (encrypted ZIP + raw XML + .md protocol) replaces the two separate download buttons — submitted and archived versions can never diverge
 
 # ─── XML SETUP ───────────────────────────────────────────────────────────────
 
@@ -870,6 +871,147 @@ def encrypt_for_estv(xml_str: str, pem_bytes: bytes) -> bytes:
     return out_buf.getvalue()
 
 
+# ─── SUBMISSION PACKAGE (encrypted zip + raw xml + .md protocol) ──────────────
+
+_NS_GLOBE = "urn:oecd:ties:globe:v2"
+_NS_STF   = "urn:oecd:ties:globestf:v5"
+
+
+def _docspec_rows(xml_str: str):
+    """One row per DocSpec in GLOBEBody: (section, jurisdiction, doctype, docref, corrref)."""
+    rows = []
+    try:
+        root = ET.fromstring(xml_str.encode("utf-8"))
+    except Exception:
+        return rows
+    g = lambda t: f"{{{_NS_GLOBE}}}{t}"
+    s = lambda t: f"{{{_NS_STF}}}{t}"
+    body = root.find(g("GLOBEBody"))
+    if body is None:
+        return rows
+    for sec in list(body):
+        section = sec.tag.split("}")[-1]
+        jur = ""
+        if section == "Summary":
+            jn = sec.find(f"{g('Jurisdiction')}/{g('JurisdictionName')}")
+            jur = jn.text if jn is not None else ""
+        elif section == "JurisdictionSection":
+            jn = sec.find(g("Jurisdiction"))
+            jur = jn.text if jn is not None else ""
+        ds = sec.find(g("DocSpec"))
+        if ds is None:
+            continue
+        ti, dr, cd = ds.find(s("DocTypeIndic")), ds.find(s("DocRefId")), ds.find(s("CorrDocRefId"))
+        rows.append((
+            section,
+            jur or "—",
+            ti.text if ti is not None else "",
+            dr.text if dr is not None else "",
+            cd.text if cd is not None else "",
+        ))
+    return rows
+
+
+def build_submission_protocol(xml_str: str, enc_bytes: bytes, raw_bytes: bytes,
+                              base_name: str, lang: str) -> str:
+    """Human-readable audit protocol (Markdown) documenting exactly what is in the package."""
+    de = (lang == "DE")
+    g = lambda t: f"{{{_NS_GLOBE}}}{t}"
+    try:
+        root = ET.fromstring(xml_str.encode("utf-8"))
+        spec = root.find(g("MessageSpec"))
+    except Exception:
+        spec = None
+
+    def sval(tag):
+        el = spec.find(g(tag)) if spec is not None else None
+        return el.text if el is not None else "—"
+
+    msgref, typind = sval("MessageRefId"), sval("MessageTypeIndic")
+    period, sender, ts = sval("ReportingPeriod"), sval("SendingEntityIN"), sval("Timestamp")
+    mode_map = {"GIR101": ("Neumeldung", "New filing"),
+                "GIR102": ("Korrekturmeldung", "Correction"),
+                "GIR103": ("Nullmeldung", "Nil report")}
+    mode = mode_map.get(typind, (typind, typind))[0 if de else 1]
+    enc_sha, raw_sha = hashlib.sha256(enc_bytes).hexdigest(), hashlib.sha256(raw_bytes).hexdigest()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    rows = _docspec_rows(xml_str)
+    # Test vs production is authoritative from the DocTypeIndic codes, NOT the filename:
+    # OECD10–13 = Test/CTS (acceptance portal), OECD0/1/2/3 = production.
+    is_test = any(r[2] in {"OECD10", "OECD11", "OECD12", "OECD13"} for r in rows)
+    if is_test:
+        kind = "⚠️ Test / CTS — nur Abnahmeportal" if de else "⚠️ Test / CTS — acceptance portal only"
+    else:
+        kind = "Produktiv" if de else "Production"
+
+    if de:
+        L = dict(title="GIR Einreichungs-Protokoll", gen="Erzeugt", meldung="Meldung",
+                 field="Feld", value="Wert", mode="Modus", period="Reporting Period",
+                 sender="Sending Entity", tsx="Zeitstempel (XML)", kind="Einreichungsart",
+                 valid="Strukturelle Validierung", validok="✅ bestanden (alle Prüfungen grün)",
+                 files="Dateien in diesem Paket", fileh="Datei", uploadnote="(an ESTV hochladen)",
+                 keepnote="(Roh-XML, aufbewahren)", prot="(dieses Protokoll)",
+                 records="Records (DocSpec)", sec="Section", juris="Jurisdiktion", typ="Typ",
+                 imp="Wichtig",
+                 i1=f"Das Roh-XML **{base_name}.xml** aufbewahren — die verschlüsselte ZIP ist nicht "
+                    f"rücklesbar; nur das XML enthält die DocRefIds für spätere Korrekturen.",
+                 i2=f"Nach der Einreichung: ESTV-Status-Meldung sichern und deren OriginalMessageRefID "
+                    f"gegen `{msgref}` abgleichen.")
+    else:
+        L = dict(title="GIR Submission Protocol", gen="Generated", meldung="Message",
+                 field="Field", value="Value", mode="Mode", period="Reporting Period",
+                 sender="Sending Entity", tsx="Timestamp (XML)", kind="Submission type",
+                 valid="Structural validation", validok="✅ passed (all checks green)",
+                 files="Files in this package", fileh="File", uploadnote="(upload to ESTV)",
+                 keepnote="(raw XML, keep it)", prot="(this protocol)",
+                 records="Records (DocSpec)", sec="Section", juris="Jurisdiction", typ="Type",
+                 imp="Important",
+                 i1=f"Keep the raw XML **{base_name}.xml** — the encrypted ZIP cannot be read back; "
+                    f"only the XML holds the DocRefIds needed for later corrections.",
+                 i2=f"After submission: archive the ESTV status message and match its OriginalMessageRefID "
+                    f"against `{msgref}`.")
+
+    lines = [
+        f"# {L['title']}", "",
+        f"**{L['gen']}:** {now} · **App:** globe-xml-export v{VERSION}", "",
+        f"## {L['meldung']}", "",
+        f"| {L['field']} | {L['value']} |", "|---|---|",
+        f"| {L['mode']} | {mode} ({typind}) |",
+        f"| MessageRefId | `{msgref}` |",
+        f"| {L['period']} | {period} |",
+        f"| {L['sender']} | {sender} |",
+        f"| {L['tsx']} | {ts} |",
+        f"| {L['kind']} | {kind} |",
+        f"| {L['valid']} | {L['validok']} |", "",
+        f"## {L['files']}", "",
+        f"| {L['fileh']} | SHA-256 |", "|---|---|",
+        f"| `{base_name}_encrypted.zip` {L['uploadnote']} | `{enc_sha}` |",
+        f"| `{base_name}.xml` {L['keepnote']} | `{raw_sha}` |",
+        f"| `{base_name}_Protokoll.md` {L['prot']} | — |", "",
+        f"## {L['records']}", "",
+        f"| {L['sec']} | {L['juris']} | {L['typ']} | DocRefId | CorrDocRefId |",
+        "|---|---|---|---|---|",
+    ]
+    for section, jur, ti, dr, cd in rows:
+        lines.append(f"| {section} | {jur} | {ti} | `{dr}` | {('`'+cd+'`') if cd else '—'} |")
+    lines += ["", f"## {L['imp']}", "", f"- {L['i1']}", f"- {L['i2']}", ""]
+    return "\n".join(lines)
+
+
+def build_download_package(xml_str: str, pem_bytes: bytes, base_name: str, lang: str) -> bytes:
+    """One .zip bundling the encrypted ESTV file, the raw XML, and the .md protocol —
+    so the submitted file and the archived file can never diverge."""
+    raw_bytes = xml_str.encode("utf-8")
+    enc_bytes = encrypt_for_estv(xml_str, pem_bytes)
+    protocol  = build_submission_protocol(xml_str, enc_bytes, raw_bytes, base_name, lang)
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{base_name}_encrypted.zip", enc_bytes)
+        zf.writestr(f"{base_name}.xml",           raw_bytes)
+        zf.writestr(f"{base_name}_Protokoll.md",  protocol.encode("utf-8"))
+    return out_buf.getvalue()
+
+
 # ─── VALIDATION ──────────────────────────────────────────────────────────────
 
 def validate_xml(xml_str: str) -> list[tuple[str, bool, str]]:
@@ -1585,6 +1727,12 @@ T: dict[str, dict[str, str]] = {
     "ready_estv":          {"EN": "Ready to upload to myESTV → GIR-Applikation.",
                             "DE": "Bereit zum Hochladen in myESTV → GIR-Applikation."},
     "enc_failed":          {"EN": "Encryption failed: {}",            "DE": "Verschlüsselung fehlgeschlagen: {}"},
+    "download_pkg":        {"EN": "⬇️  Download package",             "DE": "⬇️  Paket herunterladen"},
+    "pkg_contents":        {"EN": ("One .zip with the encrypted file for ESTV, the raw XML, and an .md protocol — "
+                                   "always download and archive all three together, so the submitted and archived versions can never diverge."),
+                            "DE": ("Ein .zip mit der verschlüsselten Datei für die ESTV, dem Roh-XML und einem .md-Protokoll — "
+                                   "immer alle drei zusammen herunterladen und ablegen, damit eingereichte und archivierte Version nie auseinanderlaufen.")},
+    "pkg_failed":          {"EN": "Package creation failed: {}",      "DE": "Paketerstellung fehlgeschlagen: {}"},
     "gen_first_long":      {"EN": "Generate the XML in Step 3 first, then encrypt here.",
                             "DE": "Generieren Sie zuerst das XML in Schritt 3, dann verschlüsseln Sie hier."},
     "bundled_key_info":    {"EN": "Using the bundled ESTV public key — the download is an encrypted .zip ready to upload to myESTV → GIR-Applikation.",
@@ -1658,10 +1806,10 @@ T: dict[str, dict[str, str]] = {
     "mode_korrektur":      {"EN": "Correction (Rektifikat)",           "DE": "Korrektur (Rektifikat)"},
     "korr_badge":          {"EN": "Correction",                        "DE": "Korrektur"},
     "korr_upload_label":   {"EN": "Originally submitted XML (raw)",    "DE": "Original eingereichtes XML (Roh-XML)"},
-    "korr_upload_help":    {"EN": ("The RAW XML of the last accepted filing (from 'Download raw XML'). The _encrypted.zip "
+    "korr_upload_help":    {"EN": ("The RAW XML of the last accepted filing (the .xml from the download package). The _encrypted.zip "
                                    "cannot be used — it is encrypted with ESTV's public key. If a correction was already "
                                    "accepted before, upload that LATEST correction instead (correction chains)."),
-                            "DE": ("Das ROH-XML der letzten akzeptierten Meldung ('Roh-XML herunterladen'). Die _encrypted.zip "
+                            "DE": ("Das ROH-XML der letzten akzeptierten Meldung (die .xml aus dem Download-Paket). Die _encrypted.zip "
                                    "kann nicht verwendet werden — sie ist mit dem öffentlichen ESTV-Schlüssel verschlüsselt. "
                                    "Wurde bereits eine Korrektur akzeptiert, laden Sie stattdessen DIESE letzte Korrektur hoch (Korrekturketten).")},
     "korr_need_both":      {"EN": "Correction mode: upload the corrected Excel template AND the originally submitted raw XML (Step 1).",
@@ -2675,43 +2823,40 @@ with st.expander(T["override_key"][lang]):
 
 pem_bytes_to_use = pem_override if pem_override else _BUNDLED_PEM
 
-_enc_col, _raw_col = st.columns([1, 1])
-with _enc_col:
-    _do_encrypt = st.button(
-        T["encrypt_btn"][lang],
-        type="primary",
-        disabled=(not xml_ready or not validation_ok or pem_bytes_to_use is None),
+# Single "Download package" — one .zip with encrypted file + raw XML + .md protocol,
+# so the submitted and the archived versions can never diverge (root cause of the Rektifikat case).
+if not xml_ready or not validation_ok or pem_bytes_to_use is None:
+    st.button(T["download_pkg"][lang], type="primary", disabled=True)
+else:
+    _base = st.session_state["xml_filename"].replace(".xml", "")
+    _pkg_key = (
+        hashlib.sha256(st.session_state["xml_str"].encode("utf-8")).hexdigest(),
+        hashlib.sha256(pem_bytes_to_use).hexdigest(),
+        lang,
     )
-with _raw_col:
-    st.download_button(
-        label=T["download_xml"][lang],
-        data=(st.session_state.get("xml_str", "") or "").encode("utf-8"),
-        file_name=st.session_state.get("xml_filename", "gir.xml"),
-        mime="application/xml",
-        disabled=(not xml_ready or not validation_ok),
-    )
-
-if _do_encrypt:
-    if not xml_ready:
-        st.error(T["generate_first"][lang])
-    elif pem_bytes_to_use is None:
-        st.error(T["upload_pem"][lang])
+    if st.session_state.get("_pkg_key") != _pkg_key:
+        try:
+            st.session_state["_pkg_bytes"] = build_download_package(
+                st.session_state["xml_str"], pem_bytes_to_use, _base, lang)
+            st.session_state["_pkg_name"] = f"{_base}_paket.zip"
+            st.session_state["_pkg_key"]  = _pkg_key
+            st.session_state["_pkg_err"]  = None
+        except Exception as e:
+            logging.exception("Package build failed")
+            st.session_state["_pkg_err"] = str(e)
+    if st.session_state.get("_pkg_err"):
+        st.error(T["pkg_failed"][lang].format(st.session_state["_pkg_err"]))
     else:
-        with st.spinner(T["spinner_enc"][lang]):
-            try:
-                zip_bytes    = encrypt_for_estv(st.session_state["xml_str"], pem_bytes_to_use)
-                base_name    = st.session_state["xml_filename"].replace(".xml", "")
-                zip_filename = f"{base_name}_encrypted.zip"
-                st.download_button(
-                    label=T["download_zip"][lang],
-                    data=zip_bytes,
-                    file_name=zip_filename,
-                    mime="application/zip",
-                )
-                st.success(T["ready_estv"][lang])
-            except Exception as e:
-                logging.exception("Encryption failed")
-                st.error(T["enc_failed"][lang].format(e))
+        st.download_button(
+            label=T["download_pkg"][lang],
+            data=st.session_state["_pkg_bytes"],
+            file_name=st.session_state["_pkg_name"],
+            mime="application/zip",
+            type="primary",
+        )
+        st.success(T["ready_estv"][lang])
+
+st.caption(T["pkg_contents"][lang])
 
 if not xml_ready:
     st.info(T["gen_first_long"][lang])
